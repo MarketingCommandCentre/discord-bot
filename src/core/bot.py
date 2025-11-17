@@ -56,6 +56,15 @@ class MarketingBot(commands.Bot):
 
             await self.load_extension('src.commands.cycle_cog')
             logger.info("✅ Loaded cycle command cog")
+            
+            # Load utils cog for daily reminders and VC forking
+            try:
+                from src.commands.utils_cog import UtilsCog
+                await self.add_cog(UtilsCog(self, request_manager=self.request_manager))
+                logger.info("✅ Loaded utils cog")
+            except Exception as e:
+                logger.error(f"Error loading utils cog: {e}")
+            
             # Load config management cog
             try:
                 await self.load_extension('src.commands.config_cog')
@@ -86,7 +95,7 @@ class MarketingBot(commands.Bot):
         try:
             from src.ui.views import RequestEditView, RequestView
 
-            REQUEST_VIEW_MESSAGE_ID =  os.getenv("REQUEST_VIEW_MESSAGE_ID")
+            REQUEST_VIEW_MESSAGE_ID =  int(os.getenv("REQUEST_VIEW_MESSAGE_ID"))
             request_view = RequestView(self.request_manager)
             self.add_view(request_view, message_id=REQUEST_VIEW_MESSAGE_ID)
             logger.info(f"✅ Registered RequestView for message {REQUEST_VIEW_MESSAGE_ID}")

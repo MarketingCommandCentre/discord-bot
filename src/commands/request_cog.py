@@ -94,6 +94,151 @@ class RequestCog(commands.Cog):
                 ephemeral=True
             )
 
+    @app_commands.command(
+        name="add",
+        description="Add a user or role to the additional assignees for this request"
+    )
+    @app_commands.describe(
+        user="The user to add as an additional assignee (optional if role is provided)",
+        role="The role whose members should be added as additional assignees (optional if user is provided)"
+    )
+    async def add_assignee(
+        self, 
+        interaction: discord.Interaction, 
+        user: discord.Member = None,
+        role: discord.Role = None
+    ):
+        """Add a user or all members of a role to the additional assignees."""
+        try:
+            # Check if this is a request channel
+            request = await self.request_manager.get_request(interaction.channel.id)
+            if not request:
+                await interaction.response.send_message(
+                    "❌ This channel is not associated with any request.",
+                    ephemeral=True
+                )
+                return
+            
+            # Validate input: either user or role must be provided
+            if not user and not role:
+                await interaction.response.send_message(
+                    "❌ You must specify either a user or a role to add.",
+                    ephemeral=True
+                )
+                return
+            
+            # Get the additional assignee role
+            if not request.additional_assignee_id:
+                await interaction.response.send_message(
+                    "❌ This request does not have an additional assignee role configured.",
+                    ephemeral=True
+                )
+                return
+            
+            additional_role = interaction.guild.get_role(request.additional_assignee_id)
+            if not additional_role:
+                await interaction.response.send_message(
+                    "❌ Could not find the additional assignee role for this request.",
+                    ephemeral=True
+                )
+                return
+            
+            # Add user(s) to the additional assignee role
+            members_added = []
+            
+            if user:
+                # Add the specific user
+                await user.add_roles(additional_role, reason=f"Added as additional assignee by {interaction.user}")
+                members_added.append(user.mention)
+            
+            if role:
+                # Add all members of the role
+                for member in role.members:
+                    if additional_role not in member.roles:
+                        await member.add_roles(additional_role, reason=f"Added as additional assignee by {interaction.user}")
+                        members_added.append(member.mention)
+            
+            # Send confirmation message
+            if members_added:
+                members_list = ", ".join(members_added)
+                await interaction.response.send_message(
+                    f"✅ Added {len(members_added)} member(s) to additional assignees: {members_list}",
+                    ephemeral=True
+                )
+            else:
+                await interaction.response.send_message(
+                    "⚠️ No new members were added. They may already be additional assignees.",
+                    ephemeral=True
+                )
+                
+        except Exception as e:
+            await interaction.response.send_message(
+                f"❌ An error occurred: {str(e)}",
+                ephemeral=True
+            )
+
+    @app_commands.command(
+        name="split",
+        description="Fork the current request into a new separate request"
+    )
+    async def split_task(self, interaction: discord.Interaction):
+        """Create a fork/copy of the current request as a new request."""
+        try:
+            # Check if this is a request channel
+            original_request = await self.request_manager.get_request(interaction.channel.id)
+            if not original_request:
+                await interaction.response.send_message(
+                    "❌ This channel is not associated with any request.",
+                    ephemeral=True
+                )
+                return
+            
+            # Defer the response as this operation might take time
+            await interaction.response.defer(ephemeral=True)
+            
+            # Create a new request with the same properties
+            from copy import deepcopy
+            new_request = deepcopy(original_request)
+            
+            # Reset fields that should be unique
+            new_request.channel_id = None
+            new_request.main_message_id = None
+            new_request.additional_assignee_id = None
+            new_request.created_at = None
+            new_request.updated_at = None
+            
+            # Append "(Split)" to the title to distinguish it
+            new_request.title = f"{new_request.title} (Split)"
+            
+            # Create the new request
+            created_request = await self.request_manager.create_request(new_request, interaction.guild)
+            
+            if created_request:
+                # Copy members from original additional assignee role to the new one
+                if original_request.additional_assignee_id and created_request.additional_assignee_id:
+                    original_role = interaction.guild.get_role(original_request.additional_assignee_id)
+                    new_role = interaction.guild.get_role(created_request.additional_assignee_id)
+                    
+                    if original_role and new_role:
+                        for member in original_role.members:
+                            await member.add_roles(new_role, reason=f"Copied from split request")
+                
+                await interaction.followup.send(
+                    f"✅ Request successfully split! New request created: <#{created_request.channel_id}>",
+                    ephemeral=True
+                )
+            else:
+                await interaction.followup.send(
+                    "❌ Failed to split request. Please try again.",
+                    ephemeral=True
+                )
+                
+        except Exception as e:
+            await interaction.followup.send(
+                f"❌ An error occurred: {str(e)}",
+                ephemeral=True
+            )
+
     @commands.Cog.listener()
     async def on_guild_channel_update(self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel):
         """Listen for channel category changes and sync with database."""

@@ -1,5 +1,5 @@
 import discord
-from src.model.Models import Request, RequestType
+from src.model.Models import Request, RequestType, RequestStatus
 from src.config.manager import BOT_CONFIG
 from src.services.request_manager import RequestManager
 from src.ui.views import SubgroupVisibilityView

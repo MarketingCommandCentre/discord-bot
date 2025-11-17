@@ -180,13 +180,23 @@ class SubgroupVisibilityView(discord.ui.View):
         """Create callback function for subgroup button"""
         async def callback(interaction: discord.Interaction):
             await self.request_manager.update_requester_department(interaction.channel.id, subgroup_data['role_id'])
-            await interaction.response.send_message(f"✅ Visibility set to subgroup {display_name}", ephemeral=True)
+            # Disable all the buttons in this view and update the original message
+            for child in self.children:
+                child.disabled = True
+            await interaction.response.edit_message(view=self)
+            # Send a confirmation ephemerally
+            await interaction.followup.send(f"✅ Visibility set to subgroup {display_name}", ephemeral=True)
         return callback
     
     def _create_everyone_callback(self):
         """Create callback function for everyone button"""
         async def callback(interaction: discord.Interaction):
-            await interaction.response.send_message(
+            # Disable all the buttons in this view and update the original message
+            for child in self.children:
+                child.disabled = True
+            await interaction.response.edit_message(view=self)
+            # Send confirmation ephemerally
+            await interaction.followup.send(
                 f"✅ Visibility set to entire {self.department.title()} team.",
                 ephemeral=True
             )
