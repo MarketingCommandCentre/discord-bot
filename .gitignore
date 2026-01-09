@@ -168,7 +168,7 @@ $RECYCLE.BIN/
 
 # Discord Bot specific
 # Configuration files with sensitive data
-src/config/settings.json
+src/config/settings*.json
 config.json
 *.token
 *.env
@@ -196,3 +196,5 @@ tmp/
 # Test outputs
 test_output/
 .test_cache/
+
+inject_csv_to_api.py

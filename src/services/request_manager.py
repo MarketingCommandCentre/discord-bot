@@ -178,6 +178,7 @@ class RequestManager:
             channel = self.bot.get_channel(channel_id)
             if channel and isinstance(channel, discord.TextChannel):
                 await self._update_request_message(updated_request, channel)
+                await self._calculate_permissions(updated_request, channel, self.bot.guilds[0])
             
             logger.info(f"✅ Synced request {channel_id} to status {status_str} from category move")
             return updated_request
@@ -350,11 +351,11 @@ class RequestManager:
         try:
             # Get the appropriate category based on request status
             category = await self._get_category_for_status(request.status or RequestStatus.IN_QUEUE, guild)
-            
+            emoji = "📸" if request.type == RequestType.POST else "🎥"
             # Create channel name
-            channel_name = f"{request.type.value.lower()}-{request.title}"[:50]  # Discord limit
+            channel_name = f"{request.title}"[:40]  # Discord limit
             channel_name = "".join(c if c.isalnum() or c in '-_' else '-' for c in channel_name.lower())
-            
+            channel_name = f"{emoji}-{channel_name}"
             # Create the channel
             channel = await guild.create_text_channel(
                 name=channel_name,
@@ -382,7 +383,7 @@ class RequestManager:
             from src.utils.cycle_helpers import is_valid_posting_date, get_cycle_warning_embed
             
             embed = discord.Embed(
-                title=f"{request.type.value.upper()} {request.title}",
+                title=f"[{request.type.value.upper()}] {request.title}",
                 description=request.description,
                 color=0x3498db
             )
@@ -444,7 +445,12 @@ class RequestManager:
                     color=0x3498db
                 )
                 if request.posting_date:
-                    embed.add_field(name="Posting Date", value=request.posting_date.strftime("%B %d, %Y"), inline=True)
+                    ts = self.to_timestamp(request.posting_date)
+                    embed.add_field(
+                        name="Posting Date",
+                        value=f"<t:{ts}:D> (<t:{ts}:R>)",
+                        inline=True
+                    )
                 if request.room:
                     embed.add_field(name="Location", value=request.room, inline=True)
                 if request.signup_url:
@@ -478,6 +484,8 @@ class RequestManager:
             # Update channel topic
             new_topic = f"{request.type.value} Request - {request.title} | Status: {request.status.value.replace('_', ' ').title()}"
             await channel.edit(topic=new_topic)
+            new_name = f"{'📸' if request.type == RequestType.POST else '🎥'}-{request.title}"[:40]
+            await channel.edit(name=new_name)
             
         except Exception as e:
             logger.error(f"Error updating channel metadata: {e}")

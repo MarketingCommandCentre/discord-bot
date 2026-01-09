@@ -4,7 +4,7 @@ Utilities cog for background tasks and VC forking functionality.
 
 import discord
 from discord.ext import commands, tasks
-from datetime import datetime, time
+from datetime import datetime, time, date
 import logging
 import asyncio
 from typing import Optional
@@ -35,75 +35,100 @@ class UtilsCog(commands.Cog):
         """Check for requests due today and send reminders."""
         try:
             logger.info("Running daily reminder task...")
+            logger.info(f"Current time: {datetime.now()}")
             
             # Get all requests from the database
             all_requests = await self.request_manager.db.get_all_requests()
             
             today = datetime.now().date()
+            logger.info(f"Today's date: {today}")
+            
             marketing_role_id = config.get("server_config", {}).get("marketing_role_id")
             
             if not marketing_role_id:
                 logger.warning("Marketing role ID not configured, skipping reminders")
                 return
             
+            logger.info(f"Checking {len(all_requests)} requests for reminders...")
             reminders_sent = 0
             
             for request in all_requests:
                 # Check if the posting date is today
-                if request.posting_date and request.posting_date.date() == today:
-                    # Get the channel
-                    channel = self.bot.get_channel(request.channel_id)
+                # Handle both datetime and date objects
+                posting_date = request.posting_date
+                if posting_date:
+                    # Convert to date if it's a datetime object
+                    if isinstance(posting_date, datetime):
+                        posting_date = posting_date.date()
                     
-                    if channel and isinstance(channel, discord.TextChannel):
-                        # Get the marketing role
-                        marketing_role = channel.guild.get_role(marketing_role_id)
+                    logger.debug(f"Checking request '{request.title}': posting_date={posting_date}, today={today}")
+                    
+                    if posting_date == today:
+                        # Get the channel
+                        channel = self.bot.get_channel(request.channel_id)
                         
-                        if marketing_role:
-                            # Create reminder embed
-                            embed = discord.Embed(
-                                title="📅 Posting Reminder",
-                                description=f"This {request.type.value} is scheduled to be posted **TODAY**!",
-                                color=0xFF9900  # Orange color for urgency
-                            )
-                            embed.add_field(
-                                name="Title",
-                                value=request.title,
-                                inline=False
-                            )
-                            embed.add_field(
-                                name="Status",
-                                value=request.status.value.replace('_', ' ').title(),
-                                inline=True
-                            )
-                            if request.assigned_to_id:
+                        if channel and isinstance(channel, discord.TextChannel):
+                            # Get the marketing role
+                            marketing_role = channel.guild.get_role(marketing_role_id)
+                            
+                            if marketing_role:
+                                # Create reminder embed
+                                embed = discord.Embed(
+                                    title="📅 Posting Reminder",
+                                    description=f"This {request.type.value} is scheduled to be posted **TODAY**!",
+                                    color=0xFF9900  # Orange color for urgency
+                                )
                                 embed.add_field(
-                                    name="Assigned To",
-                                    value=f"<@{request.assigned_to_id}>",
+                                    name="Title",
+                                    value=request.title,
+                                    inline=False
+                                )
+                                embed.add_field(
+                                    name="Status",
+                                    value=request.status.value.replace('_', ' ').title(),
                                     inline=True
                                 )
-                            
-                            embed.set_footer(text="Don't forget to post this content today!")
-                            embed.timestamp = datetime.now()
-                            
-                            # Send the reminder
-                            await channel.send(
-                                f"{marketing_role.mention} Reminder!",
-                                embed=embed
-                            )
-                            
-                            reminders_sent += 1
-                            logger.info(f"Sent reminder for request '{request.title}' in channel {request.channel_id}")
+                                if request.assigned_to_id:
+                                    embed.add_field(
+                                        name="Assigned To",
+                                        value=f"<@{request.assigned_to_id}>",
+                                        inline=True
+                                    )
+                                
+                                embed.set_footer(text="Don't forget to post this content today!")
+                                embed.timestamp = datetime.now()
+                                
+                                # Send the reminder
+                                await channel.send(
+                                    f"{marketing_role.mention} Reminder!",
+                                    embed=embed
+                                )
+                                
+                                reminders_sent += 1
+                                logger.info(f"Sent reminder for request '{request.title}' in channel {request.channel_id}")
+                            else:
+                                logger.warning(f"Marketing role {marketing_role_id} not found in guild")
+                        else:
+                            logger.warning(f"Channel {request.channel_id} not found or is not a text channel")
             
             logger.info(f"Daily reminder task complete. Sent {reminders_sent} reminder(s).")
             
         except Exception as e:
-            logger.error(f"Error in daily reminder task: {e}")
+            logger.error(f"Error in daily reminder task: {e}", exc_info=True)
     
     @daily_reminder.before_loop
     async def before_daily_reminder(self):
         """Wait for the bot to be ready before starting the task."""
         await self.bot.wait_until_ready()
         logger.info("Daily reminder task is ready to start")
+    
+    @commands.command(name="test_reminders")
+    @commands.has_permissions(administrator=True)
+    async def test_reminders(self, ctx):
+        """Manually trigger the daily reminder task for testing."""
+        await ctx.send("🔄 Running daily reminder task manually...")
+        await self.daily_reminder()
+        await ctx.send("✅ Daily reminder task completed!")
     
     @commands.Cog.listener()
     async def on_voice_state_update(
