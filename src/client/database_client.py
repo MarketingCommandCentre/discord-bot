@@ -5,7 +5,7 @@ from datetime import datetime
 import aiohttp
 from aiohttp import BasicAuth
 
-from src.model.Models import Request, RequestStatus
+from src.model.Models import Request, RequestStatus, RequestType
 
 
 class DatabaseClient:
@@ -130,6 +130,10 @@ class DatabaseClient:
         # Convert status string to enum
         if data.get("status"):
             parsed_data["status"] = RequestStatus(data["status"].lower())
+        
+        # Convert request type string to enum
+        if data.get("requestType"):
+            parsed_data["type"] = RequestType(data["requestType"].lower())
         
         return Request(**parsed_data)
     

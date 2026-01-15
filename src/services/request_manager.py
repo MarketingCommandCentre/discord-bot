@@ -179,6 +179,7 @@ class RequestManager:
             if channel and isinstance(channel, discord.TextChannel):
                 await self._update_request_message(updated_request, channel)
                 await self._calculate_permissions(updated_request, channel, self.bot.guilds[0])
+                await self._update_channel_metadata(updated_request, channel)
             
             logger.info(f"✅ Synced request {channel_id} to status {status_str} from category move")
             return updated_request
