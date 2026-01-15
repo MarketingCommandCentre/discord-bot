@@ -31,7 +31,7 @@ class SnowDayCog(commands.Cog):
         self.check_campus_status.cancel()
         self.daily_campus_update.cancel()
     
-    @tasks.loop(minutes=1)
+    @tasks.loop(minutes=5)
     async def check_campus_status(self):
         """Check campus status every 5 minutes and send alerts if any campus is closed. Stops if closure detected."""
         try:
