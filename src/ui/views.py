@@ -50,16 +50,6 @@ class RequestEditView(discord.ui.View):
 
     async def _on_edit_click(self, interaction: discord.Interaction):
         """Handle edit button click."""
-        # Permission: only requester or managers can edit
-        if (
-            interaction.user.id != self.requester_id 
-            and not getattr(interaction.user.guild_permissions, 'manage_channels', False)
-        ):
-            await interaction.response.send_message(
-                "❌ Only the requester or a moderator can edit this request.",
-                ephemeral=True,
-            )
-            return
 
         # Fetch the request from the database to prefill the modal
         try:

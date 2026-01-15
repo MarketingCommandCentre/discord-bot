@@ -72,6 +72,13 @@ class MarketingBot(commands.Bot):
             except Exception as e:
                 logger.error(f"Error loading config cog: {e}")
             
+            # Load snow day monitor cog
+            try:
+                await self.load_extension('src.commands.snow_cog')
+                logger.info("✅ Loaded snow day monitor cog")
+            except Exception as e:
+                logger.error(f"Error loading snow cog: {e}")
+            
             # Register persistent views for edit buttons
             await self._setup_persistent_views()
             
