@@ -9,6 +9,7 @@ import logging
 import asyncio
 from typing import Optional
 
+from model.Models import RequestStatus
 from src.services.request_manager import RequestManager
 from src.config.manager import config
 
@@ -63,7 +64,7 @@ class UtilsCog(commands.Cog):
                     
                     logger.debug(f"Checking request '{request.title}': posting_date={posting_date}, today={today}")
                     
-                    if posting_date == today:
+                    if posting_date == today and request.status != RequestStatus.BLOCKED:
                         # Get the channel
                         channel = self.bot.get_channel(request.channel_id)
                         
