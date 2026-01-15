@@ -39,7 +39,7 @@ class SnowDayCog(commands.Cog):
                 return
             
             statuses = await self.campus_service.get_all_statuses()
-            closed_campuses = [campus for campus in statuses if not campus.is_closed]
+            closed_campuses = [campus for campus in statuses if campus.is_closed]
             
             if closed_campuses:
                 # Send alert for closed campuses
