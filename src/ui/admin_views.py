@@ -678,8 +678,12 @@ class ChangeUserModal(ui.Modal):
                 )
                 return
             
-            setattr(self.request, f"{self.field}_id", user_id)
-            updated = await self.request_manager.update_request(self.request)
+            # Use specific endpoint for changing requester
+            if self.field == "requester":
+                updated = await self.request_manager.change_requester(self.request.channel_id, user_id)
+            else:
+                setattr(self.request, f"{self.field}_id", user_id)
+                updated = await self.request_manager.update_request(self.request)
             
             if updated:
                 self.parent_view.request = updated

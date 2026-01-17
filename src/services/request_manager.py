@@ -357,7 +357,41 @@ class RequestManager:
         except Exception as e:
             logger.error(f"Error updating requester department: {e}")
             return None
+    
+    async def change_requester(self, channel_id: int, new_requester_id: int) -> Optional[Request]:
+        """
+        Change the requester for a given request.
         
+        Args:
+            channel_id: The channel ID of the request
+            new_requester_id: The new requester's Discord user ID
+        
+        Returns:
+            The updated request, or None if failed
+        """
+        try:
+            request = await self.get_request(channel_id)
+            if not request:
+                logger.error("Request not found for changing requester")
+                return None
+            
+            # Update the requester in the database using the new endpoint
+            updated_request = await self.db.change_requester(channel_id, new_requester_id)
+            if not updated_request:
+                logger.error("Failed to change requester in database")
+                return None
+            
+            # Recalculate permissions to reflect the new requester
+            channel = self.bot.get_channel(channel_id)
+            if channel:
+                await self._calculate_permissions(updated_request, channel, self.bot.guilds[0])
+            
+            logger.info(f"✅ Changed requester for request {channel_id} to {new_requester_id}")
+            return updated_request
+            
+        except Exception as e:
+            logger.error(f"Error changing requester: {e}")
+            return None
         
 
     async def has_department_subgroups(self, requester_id: int) -> bool:

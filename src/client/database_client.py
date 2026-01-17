@@ -358,3 +358,21 @@ class DatabaseClient:
         except aiohttp.ClientError as e:
             print(f"Error updating requester department {channel_id}: {e}")
             return None
+    
+    async def change_requester(self, channel_id: int, requester_id: int) -> Optional[Request]:
+        """
+        Change the requester of a request.
+        
+        Endpoint: PATCH /api/requests/channel/{channelId}/requester/{requesterId}
+        """
+        await self._ensure_session()
+        try:
+            async with self._session.patch(
+                f"{self.base_url}/api/requests/channel/{channel_id}/requester/{requester_id}"
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+                return self._parse_request(data)
+        except aiohttp.ClientError as e:
+            print(f"Error changing requester for request {channel_id}: {e}")
+            return None
