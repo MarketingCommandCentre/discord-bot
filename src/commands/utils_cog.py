@@ -4,12 +4,13 @@ Utilities cog for background tasks and VC forking functionality.
 
 import discord
 from discord.ext import commands, tasks
+from discord import app_commands
 from datetime import datetime, time, date
 import logging
 import asyncio
 from typing import Optional
 
-from model.Models import RequestStatus
+from src.model.Models import RequestStatus
 from src.services.request_manager import RequestManager
 from src.config.manager import config
 
@@ -64,7 +65,7 @@ class UtilsCog(commands.Cog):
                     
                     logger.debug(f"Checking request '{request.title}': posting_date={posting_date}, today={today}")
                     
-                    if posting_date == today and request.status != RequestStatus.BLOCKED:
+                    if posting_date == today and request.status not in [RequestStatus.BLOCKED, RequestStatus.DONE]:
                         # Get the channel
                         channel = self.bot.get_channel(request.channel_id)
                         
@@ -130,7 +131,125 @@ class UtilsCog(commands.Cog):
         await ctx.send("🔄 Running daily reminder task manually...")
         await self.daily_reminder()
         await ctx.send("✅ Daily reminder task completed!")
-    
+
+    @app_commands.command(
+        name="manage",
+        description="[Admin] Open the request management console (god mode)"
+    )
+    @app_commands.describe(
+        channel="The request channel to manage (defaults to current channel)"
+    )
+    async def manage_request(
+        self, 
+        interaction: discord.Interaction, 
+        channel: Optional[discord.TextChannel] = None
+    ):
+        """
+        Admin command to open a comprehensive request management interface.
+        Allows modifying all aspects of a request without direct database access.
+        """
+        # Check for admin permissions
+        if not interaction.user.guild_permissions.manage_guild:
+            await interaction.response.send_message(
+                "❌ You need **Manage Server** permission to use this command.",
+                ephemeral=True
+            )
+            return
+        
+        # Use provided channel or current channel
+        target_channel = channel or interaction.channel
+        
+        if not isinstance(target_channel, discord.TextChannel):
+            await interaction.response.send_message(
+                "❌ Please specify a valid text channel.",
+                ephemeral=True
+            )
+            return
+        
+        # Fetch the request from database
+        request = await self.request_manager.get_request(target_channel.id)
+        
+        if not request:
+            await interaction.response.send_message(
+                f"❌ **{target_channel.mention}** is not a request channel.\n"
+                "Please use this command in a request channel or specify one.",
+                ephemeral=True
+            )
+            return
+        
+        # Create and send the admin management view
+        from src.ui.admin_views import AdminRequestManageView
+        
+        view = AdminRequestManageView(
+            request=request,
+            request_manager=self.request_manager,
+            guild=interaction.guild
+        )
+        
+        await interaction.response.send_message(
+            embed=view.get_embed(),
+            view=view,
+            ephemeral=True
+        )
+
+    @app_commands.command(
+        name="lookup",
+        description="[Admin] Look up a request by channel ID"
+    )
+    @app_commands.describe(
+        channel_id="The channel ID of the request to look up"
+    )
+    async def lookup_request(
+        self, 
+        interaction: discord.Interaction, 
+        channel_id: str
+    ):
+        """
+        Admin command to look up a request by its channel ID.
+        Useful when the channel no longer exists or for debugging.
+        """
+        # Check for admin permissions
+        if not interaction.user.guild_permissions.manage_guild:
+            await interaction.response.send_message(
+                "❌ You need **Manage Server** permission to use this command.",
+                ephemeral=True
+            )
+            return
+        
+        try:
+            cid = int(channel_id)
+        except ValueError:
+            await interaction.response.send_message(
+                "❌ Invalid channel ID format.",
+                ephemeral=True
+            )
+            return
+        
+        # Fetch the request from database
+        request = await self.request_manager.get_request(cid)
+        
+        if not request:
+            await interaction.response.send_message(
+                f"❌ No request found with channel ID `{channel_id}`.",
+                ephemeral=True
+            )
+            return
+        
+        # Create and send the admin management view
+        from src.ui.admin_views import AdminRequestManageView
+        
+        view = AdminRequestManageView(
+            request=request,
+            request_manager=self.request_manager,
+            guild=interaction.guild
+        )
+        
+        await interaction.response.send_message(
+            embed=view.get_embed(),
+            view=view,
+            ephemeral=True
+        )
+
     @commands.Cog.listener()
     async def on_voice_state_update(
         self, 

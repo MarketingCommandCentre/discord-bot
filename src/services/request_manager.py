@@ -254,6 +254,40 @@ class RequestManager:
         except Exception as e:
             logger.error(f"Error deleting request: {e}")
             return False
+
+    async def set_request_status(self, channel_id: int, status: RequestStatus) -> Optional[Request]:
+        """
+        Set the status of a request and update Discord channel accordingly.
+        
+        Args:
+            channel_id: The channel ID of the request
+            status: The new status to set
+            
+        Returns:
+            The updated request, or None if failed
+        """
+        try:
+            # 1. Update status in database
+            updated_request = await self.db.set_request_status(channel_id, status)
+            if not updated_request:
+                logger.error("Failed to set request status in database")
+                return None
+            
+            # 2. Move channel to appropriate category
+            channel = self.bot.get_channel(channel_id)
+            if channel and isinstance(channel, discord.TextChannel):
+                await self._move_channel_to_category(updated_request, channel)
+                await self._update_request_message(updated_request, channel)
+            
+            # 3. Recalculate permissions
+            await self._calculate_permissions(updated_request, channel, self.bot.guilds[0])
+            
+            logger.info(f"✅ Set request {channel_id} status to {status.value}")
+            return updated_request
+            
+        except Exception as e:
+            logger.error(f"Error setting request status: {e}")
+            return None
         
     async def get_request(self, channel_id: int) -> Optional[Request]:
         """
