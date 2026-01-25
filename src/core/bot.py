@@ -10,6 +10,7 @@ from typing import Optional
 import os
 import traceback
 
+from commands.snow_cog import SnowDayCog
 from src.commands.request_cog import RequestCog
 from src.services.request_manager import RequestManager
 from src.client.database_client import DatabaseClient
@@ -51,6 +52,8 @@ class MarketingBot(commands.Bot):
         try:
             # Load the request cog
             await self.add_cog(RequestCog(self, request_manager=self.request_manager))
+
+            await self.add_cog(SnowDayCog(self))
 
             logger.info("✅ Loaded request command cog")
 
