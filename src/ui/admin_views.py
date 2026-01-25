@@ -724,8 +724,10 @@ class DepartmentSelectView(ui.View):
         
         # Build options from configured departments
         departments = config.get("departments", {})
+        subdepartments = config.get("department_subgroups", {})
         options = []
         
+        # Add main departments
         for key, data in departments.items():
             role_id = data.get("role_id")
             if role_id:
@@ -737,11 +739,26 @@ class DepartmentSelectView(ui.View):
                     )
                 )
         
+        # Add subdepartments with parent indication
+        for parent_key, subs in subdepartments.items():
+            parent_data = departments.get(parent_key, {})
+            parent_name = parent_data.get("name", parent_key)
+            for sub_key, sub_data in subs.items():
+                role_id = sub_data.get("role_id")
+                if role_id:
+                    options.append(
+                        discord.SelectOption(
+                            label=f"{sub_data.get('name', sub_key)} ({parent_name})",
+                            value=str(role_id),
+                            default=request.requester_department_id == role_id
+                        )
+                    )
+        
         if not options:
             options.append(discord.SelectOption(label="No departments configured", value="0"))
         
         self.select = ui.Select(
-            placeholder="Select department...",
+            placeholder="Select department or subdepartment...",
             options=options[:25]  # Discord limit
         )
         self.select.callback = self.on_select

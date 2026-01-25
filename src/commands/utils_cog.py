@@ -32,7 +32,7 @@ class UtilsCog(commands.Cog):
         """Clean up when the cog is unloaded."""
         self.daily_reminder.cancel()
     
-    @tasks.loop(time=time(hour=6, minute=0))  # Run at 6:00 AM
+    @tasks.loop(time=time(hour=6, minute=0, tzinfo=datetime.now().astimezone().tzinfo))  # Run at 6:00 AM EST
     async def daily_reminder(self):
         """Check for requests due today and send reminders."""
         try:

@@ -20,9 +20,10 @@ class SnowDayCog(commands.Cog):
         self.bot = bot
         self.campus_service = CampusStatusService()
         self.alert_channel_id: Optional[int] = None
+        self.monitoring_enabled = False  # Must be manually enabled
         self.daily_update_sent = False
         
-        # Start the monitoring tasks
+        # Start the monitoring tasks (but they won't run unless enabled)
         self.check_campus_status.start()
         self.daily_campus_update.start()
     
@@ -35,7 +36,7 @@ class SnowDayCog(commands.Cog):
     async def check_campus_status(self):
         """Check campus status every 5 minutes and send alerts if any campus is closed. Stops if closure detected."""
         try:
-            if not self.alert_channel_id:
+            if not self.alert_channel_id or not self.monitoring_enabled:
                 return
             
             statuses = await self.campus_service.get_all_statuses()
@@ -64,9 +65,9 @@ class SnowDayCog(commands.Cog):
                     await channel.send("@everyone", embed=embed)
                     logger.info(f"Sent campus closure alert for {len(closed_campuses)} campus(es)")
                 
-                # Stop the task since a campus is closed
-                self.check_campus_status.cancel()
-                logger.info("Campus status monitoring stopped - closure detected")
+                # Stop monitoring since a campus is closed
+                self.monitoring_enabled = False
+                logger.info("Campus status monitoring disabled - closure detected")
             
         except Exception as e:
             logger.error(f"Error checking campus status: {e}")
@@ -76,11 +77,11 @@ class SnowDayCog(commands.Cog):
         """Wait until the bot is ready before starting the loop."""
         await self.bot.wait_until_ready()
     
-    @tasks.loop(time=time(hour=6, minute=10))
+    @tasks.loop(time=time(hour=11, minute=30))  # 6 AM EST = 11 AM UTC
     async def daily_campus_update(self):
-        """Send daily campus status update at 6:10 AM, then stop."""
+        """Send daily campus status update at 6:00 AM EST, then disable monitoring."""
         try:
-            if not self.alert_channel_id or self.daily_update_sent:
+            if not self.alert_channel_id or not self.monitoring_enabled:
                 return
             
             statuses = await self.campus_service.get_all_statuses()
@@ -101,16 +102,15 @@ class SnowDayCog(commands.Cog):
                         inline=False
                     )
                 
-                embed.set_footer(text="Daily update - monitoring continues")
+                embed.set_footer(text="Monitoring disabled - use /snow-enable to re-enable")
                 embed.timestamp = discord.utils.utcnow()
                 
                 await channel.send("@everyone", embed=embed)
                 logger.info("Sent daily campus status update")
                 
-                # Mark as sent and stop the task
-                self.daily_update_sent = True
-                self.daily_campus_update.cancel()
-                logger.info("Daily campus update task stopped after sending")
+                # Disable monitoring after morning check
+                self.monitoring_enabled = False
+                logger.info("Campus monitoring disabled after morning update")
             
         except Exception as e:
             logger.error(f"Error sending daily campus update: {e}")
@@ -127,6 +127,47 @@ class SnowDayCog(commands.Cog):
         self.alert_channel_id = channel.id
         await ctx.send(f"✅ Snow day alerts will be sent to {channel.mention}")
         logger.info(f"Snow alert channel set to {channel.name} ({channel.id})")
+    
+    @commands.command(name="snow-enable")
+    @commands.has_permissions(manage_guild=True)
+    async def enable_monitoring(self, ctx):
+        """Enable snow day monitoring (admin only). Use this the night before you want checks."""
+        if not self.alert_channel_id:
+            await ctx.send("❌ Please set an alert channel first using `/snow-channel`")
+            return
+        
+        self.monitoring_enabled = True
+        await ctx.send(
+            "✅ Snow day monitoring **enabled**!\n"
+            "• Checking every 5 minutes for campus closures\n"
+            "• Daily update will be sent at 6:00 AM EST\n"
+            "• Monitoring will automatically disable after the morning update or if a closure is detected"
+        )
+        logger.info("Snow day monitoring enabled")
+    
+    @commands.command(name="snow-disable")
+    @commands.has_permissions(manage_guild=True)
+    async def disable_monitoring(self, ctx):
+        """Disable snow day monitoring (admin only)."""
+        self.monitoring_enabled = False
+        await ctx.send("✅ Snow day monitoring **disabled**.")
+        logger.info("Snow day monitoring disabled manually")
+    
+    @commands.command(name="snow-status")
+    async def check_monitoring_status(self, ctx):
+        """Check if snow day monitoring is currently enabled."""
+        status = "✅ **ENABLED**" if self.monitoring_enabled else "❌ **DISABLED**"
+        channel_info = f"<#{self.alert_channel_id}>" if self.alert_channel_id else "Not set"
+        
+        embed = discord.Embed(
+            title="🌨️ Snow Day Monitoring Status",
+            color=discord.Color.green() if self.monitoring_enabled else discord.Color.red()
+        )
+        embed.add_field(name="Monitoring Status", value=status, inline=False)
+        embed.add_field(name="Alert Channel", value=channel_info, inline=False)
+        embed.set_footer(text="Use /snow-enable to activate monitoring")
+        
+        await ctx.send(embed=embed)
     
     @commands.command(name="snow-check")
     async def manual_check(self, ctx):
