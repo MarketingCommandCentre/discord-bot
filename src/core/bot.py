@@ -10,7 +10,7 @@ from typing import Optional
 import os
 import traceback
 
-from commands.snow_cog import SnowDayCog
+from src.commands.snow_cog import SnowDayCog
 from src.commands.request_cog import RequestCog
 from src.services.request_manager import RequestManager
 from src.client.database_client import DatabaseClient
