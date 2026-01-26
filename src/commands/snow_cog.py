@@ -24,7 +24,7 @@ class SnowDayCog(commands.Cog):
         self.daily_update_sent = False
         
         # Start the monitoring tasks (but they won't run unless enabled)
-        self.check_campus_status.start()
+        # self.check_campus_status.start()
         self.daily_campus_update.start()
     
     def cog_unload(self):
