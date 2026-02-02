@@ -5,7 +5,7 @@ Request management service that handles both database operations and Discord ser
 from functools import lru_cache
 import discord
 from discord.ext import commands
-from typing import Optional, List
+from typing import Optional, List, Dict, Iterable
 import logging
 
 from datetime import datetime, date
@@ -75,6 +75,8 @@ class RequestManager:
                         
             # 5. Set appropriate permissions and notifications
             await self._calculate_permissions(created_request, channel, guild)
+
+            await self.sort_status_category(created_request.status, guild)
             
             logger.info(f"✅ Successfully created request {created_request.channel_id}")
             return created_request
@@ -94,6 +96,14 @@ class RequestManager:
             The updated request, or None if failed
         """
         try:
+            existing_request = await self.db.get_request_by_channel_id(request.channel_id)
+            resort_needed = False
+            if existing_request:
+                resort_needed = (
+                    existing_request.posting_date != request.posting_date
+                    or existing_request.type != request.type
+                )
+
             # 1. Update in database
             updated_request = await self.db.update_request(request.channel_id, request)
             if not updated_request:
@@ -105,6 +115,8 @@ class RequestManager:
             if channel and isinstance(channel, discord.TextChannel):
                 await self._update_request_message(updated_request, channel)
                 await self._update_channel_metadata(updated_request, channel)
+                if resort_needed:
+                    await self.sort_status_category(updated_request.status, channel.guild)
             
             logger.info(f"Successfully updated request {updated_request.channel_id}")
             return updated_request
@@ -135,6 +147,7 @@ class RequestManager:
             if channel and isinstance(channel, discord.TextChannel):
                 await self._move_channel_to_category(updated_request, channel)
                 await self._update_request_message(updated_request, channel)
+                await self.sort_status_category(updated_request.status, channel.guild)
             
             # 3. Recalculate permissions
             await self._calculate_permissions(updated_request, channel, self.bot.guilds[0])
@@ -180,6 +193,7 @@ class RequestManager:
                 await self._update_request_message(updated_request, channel)
                 await self._calculate_permissions(updated_request, channel, self.bot.guilds[0])
                 await self._update_channel_metadata(updated_request, channel)
+                await self.sort_status_category(updated_request.status, channel.guild)
             
             logger.info(f"✅ Synced request {channel_id} to status {status_str} from category move")
             return updated_request
@@ -278,6 +292,7 @@ class RequestManager:
             if channel and isinstance(channel, discord.TextChannel):
                 await self._move_channel_to_category(updated_request, channel)
                 await self._update_request_message(updated_request, channel)
+                await self.sort_status_category(updated_request.status, channel.guild)
             
             # 3. Recalculate permissions
             await self._calculate_permissions(updated_request, channel, self.bot.guilds[0])
@@ -392,6 +407,34 @@ class RequestManager:
         except Exception as e:
             logger.error(f"Error changing requester: {e}")
             return None
+
+    async def resort_request_channel(self, channel_id: int) -> bool:
+        """Resort the category containing the provided request channel."""
+        request = await self.get_request(channel_id)
+        if not request:
+            return False
+        channel = self.bot.get_channel(channel_id)
+        if channel and isinstance(channel, discord.TextChannel):
+            await self.sort_status_category(request.status, channel.guild)
+            return True
+        return False
+
+    async def sort_status_category(self, status: RequestStatus, guild: discord.Guild) -> None:
+        """Sort request channels in a status category by type and posting date."""
+        try:
+            category = await self._get_category_for_status(status, guild)
+            if not category:
+                return
+            requests = await self.db.get_requests_by_status(status)
+            request_map = {request.channel_id: request for request in requests}
+            await self._sort_category_channels(category, request_map.values())
+        except Exception as e:
+            logger.error(f"Error sorting category for status {status.value}: {e}")
+
+    async def sort_all_status_categories(self, guild: discord.Guild) -> None:
+        """Sort all configured status categories in the guild."""
+        for status in RequestStatus:
+            await self.sort_status_category(status, guild)
         
 
     async def has_department_subgroups(self, requester_id: int) -> bool:
@@ -662,3 +705,49 @@ class RequestManager:
             
         except Exception as e:
             logger.error(f"Error moving channel to category: {e}")
+
+    async def _sort_category_channels(
+        self,
+        category: discord.CategoryChannel,
+        requests: Iterable[Request],
+    ) -> None:
+        """Sort channels in the category using a bulk position update."""
+        request_map: Dict[int, Request] = {request.channel_id: request for request in requests}
+        if not request_map:
+            return
+
+        channels = list(category.channels)
+        request_channels = [
+            channel for channel in channels
+            if isinstance(channel, discord.TextChannel) and channel.id in request_map
+        ]
+        if not request_channels:
+            return
+
+        def sort_key(channel: discord.TextChannel):
+            request = request_map[channel.id]
+            type_rank = 0 if request.type == RequestType.POST else 1
+            posting_timestamp = request.posting_date.timestamp()
+            return (type_rank, -posting_timestamp)
+
+        sorted_requests = sorted(request_channels, key=sort_key)
+        non_request_channels = [
+            channel for channel in channels
+            if channel not in request_channels
+        ]
+        new_order = sorted_requests + non_request_channels
+        current_order = channels
+
+        if [channel.id for channel in new_order] == [channel.id for channel in current_order]:
+            return
+
+        updates = [
+            {"id": channel.id, "position": position}
+            for position, channel in enumerate(new_order)
+        ]
+
+        await self.bot.http.bulk_channel_update(
+            category.guild.id,
+            updates,
+            reason="Auto-sort request channels",
+        )

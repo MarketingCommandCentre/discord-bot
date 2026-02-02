@@ -847,6 +847,15 @@ class ChannelActionsView(ui.View):
         else:
             await interaction.followup.send("❌ Channel not found.", ephemeral=True)
 
+    @ui.button(label="Resort Channel", style=discord.ButtonStyle.secondary, emoji="↕️")
+    async def resort_channel(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        success = await self.request_manager.resort_request_channel(self.request.channel_id)
+        if success:
+            await interaction.followup.send("✅ Channel resorted within its category.", ephemeral=True)
+        else:
+            await interaction.followup.send("❌ Failed to resort channel.", ephemeral=True)
+
 
 class RenameChannelModal(ui.Modal):
     """Modal for renaming a channel."""

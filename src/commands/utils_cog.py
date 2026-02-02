@@ -193,6 +193,23 @@ class UtilsCog(commands.Cog):
         )
 
     @app_commands.command(
+        name="sort-all",
+        description="[Admin] Re-sort all request channels by type and posting date"
+    )
+    async def sort_all(self, interaction: discord.Interaction):
+        """Admin command to re-sort all request channels in batch."""
+        if not interaction.user.guild_permissions.manage_guild:
+            await interaction.response.send_message(
+                "❌ You need **Manage Server** permission to use this command.",
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        await self.request_manager.sort_all_status_categories(interaction.guild)
+        await interaction.followup.send("✅ Re-sorted all request channels.", ephemeral=True)
+
+    @app_commands.command(
         name="lookup",
         description="[Admin] Look up a request by channel ID"
     )
