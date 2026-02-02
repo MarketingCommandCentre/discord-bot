@@ -28,9 +28,13 @@ class WorkloadClient:
         
         self.bot_auth = bot_auth
         self._session: Optional[aiohttp.ClientSession] = None
+        
+        # Connection pool settings for better performance
+        self._connector_limit = 10
+        self._connector_limit_per_host = 5
     
     async def _ensure_session(self):
-        """Ensure aiohttp session exists."""
+        """Ensure aiohttp session exists with connection pooling."""
         if self._session is None or self._session.closed:
             headers = {}
             auth = None
@@ -40,7 +44,20 @@ class WorkloadClient:
             elif self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
             
-            self._session = aiohttp.ClientSession(headers=headers, auth=auth)
+            # Create connector with connection pooling for better performance
+            connector = aiohttp.TCPConnector(
+                limit=self._connector_limit,
+                limit_per_host=self._connector_limit_per_host,
+                ttl_dns_cache=300,  # Cache DNS for 5 minutes
+                keepalive_timeout=30  # Keep connections alive for reuse
+            )
+            
+            self._session = aiohttp.ClientSession(
+                headers=headers, 
+                auth=auth,
+                connector=connector,
+                timeout=aiohttp.ClientTimeout(total=30)
+            )
     
     async def close(self):
         """Close the aiohttp session."""

@@ -6,6 +6,7 @@ import json
 import os
 from typing import Dict, Any, Optional
 from threading import Lock
+from functools import lru_cache
 
 class ConfigManager:
     """Thread-safe configuration manager that loads from JSON"""
@@ -182,6 +183,8 @@ def reload_config() -> bool:
     """Reload configuration from file and update legacy variables"""
     if config.reload_config():
         _update_legacy_vars()
+        # Invalidate caches on config reload
+        _category_id_cache.clear()
         return True
     return False
 
@@ -263,8 +266,21 @@ def create_department(dept_key: str, display_name: str) -> bool:
         print(f"Error creating department: {e}")
         return False
 
+# Pre-computed status mapping for O(1) lookups
+_STATUS_TO_CATEGORY_KEY = {
+    'in_queue': 'queue',
+    'in_progress': 'progress', 
+    'awaiting_posting': 'awaiting',
+    'done': 'done',
+    'blocked': 'blocked'
+}
+
+# Cache for category IDs (invalidated on config reload)
+_category_id_cache: Dict[str, Optional[int]] = {}
+
 def get_category_id_for_status(status: str) -> Optional[int]:
     """Get the Discord category ID for a given request status.
+    Uses caching for frequently accessed values.
     
     Args:
         status: The request status (e.g., 'in_queue', 'in_progress', etc.)
@@ -272,17 +288,15 @@ def get_category_id_for_status(status: str) -> Optional[int]:
     Returns:
         The Discord category ID, or None if not configured
     """
-    status_mapping = {
-        'in_queue': 'queue',
-        'in_progress': 'progress', 
-        'awaiting_posting': 'awaiting',
-        'done': 'done',
-        'blocked': 'blocked'
-    }
+    # Check cache first
+    if status in _category_id_cache:
+        return _category_id_cache[status]
     
-    category_key = status_mapping.get(status)
+    category_key = _STATUS_TO_CATEGORY_KEY.get(status)
     if category_key:
-        return config.get_nested("categories", category_key, "category_id")
+        result = config.get_nested("categories", category_key, "category_id")
+        _category_id_cache[status] = result
+        return result
     return None
 
 def get_category_name_for_status(status: str) -> Optional[str]:

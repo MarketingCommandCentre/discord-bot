@@ -94,34 +94,33 @@ class MarketingBot(commands.Bot):
             logger.error(f"Error loading cogs or syncing commands: {e}")
     
     async def _setup_persistent_views(self):
-        """Register persistent views for existing requests."""
+        """Register persistent views for existing requests.
+        Optimized to batch-register views without individual Discord API calls."""
         try:
             from src.ui.views import RequestEditView, RequestView
 
-            REQUEST_VIEW_MESSAGE_ID =  int(os.getenv("REQUEST_VIEW_MESSAGE_ID"))
+            REQUEST_VIEW_MESSAGE_ID = int(os.getenv("REQUEST_VIEW_MESSAGE_ID"))
             request_view = RequestView(self.request_manager)
             self.add_view(request_view, message_id=REQUEST_VIEW_MESSAGE_ID)
             logger.info(f"✅ Registered RequestView for message {REQUEST_VIEW_MESSAGE_ID}")
             
-            # Get all requests from database
+            # Get all requests from database in a single call
             all_requests = await self.db.get_all_requests()
             
-            # Register a view for each request
+            # Batch register views - this doesn't make API calls, just registers handlers
+            registered_count = 0
             for request in all_requests:
                 if request.channel_id and request.requester_id:
-                    # Get the request manager from the cog
-                    request_cog = self.get_cog('RequestCog')
-                    request_manager = getattr(request_cog, 'request_manager', None) if request_cog else None
-                    
                     view = RequestEditView(
                         requester_id=request.requester_id,
                         request_type=request.type.value,
                         channel_id=request.channel_id,
-                        request_manager=request_manager
+                        request_manager=self.request_manager
                     )
                     self.add_view(view)
+                    registered_count += 1
             
-            logger.info(f"Registered {len(all_requests)} request edit view(s)")
+            logger.info(f"Registered {registered_count} request edit view(s)")
             
         except Exception as e:
             logger.error(f"Error setting up persistent views: {e}")
