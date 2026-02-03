@@ -281,6 +281,8 @@ class DatabaseClient:
             ) as response:
                 response.raise_for_status()
                 data = await response.json()
+                if not data.get("requestType") and request.type:
+                    data["requestType"] = request.type.value.upper()
                 return self._parse_request(data)
         except aiohttp.ClientError as e:
             print(f"Error updating request: {e}")
