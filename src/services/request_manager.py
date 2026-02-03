@@ -728,7 +728,7 @@ class RequestManager:
             request = request_map[channel.id]
             type_rank = 0 if request.type == RequestType.POST else 1
             posting_timestamp = request.posting_date.timestamp()
-            return (type_rank, -posting_timestamp)
+            return (type_rank, posting_timestamp)
 
         sorted_requests = sorted(request_channels, key=sort_key)
         non_request_channels = [
