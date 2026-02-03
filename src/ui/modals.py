@@ -82,12 +82,15 @@ class BaseRequestModal(discord.ui.Modal):
         # Set requester information
         self.request.requester_id = interaction.user.id
         
+        # Defer the response immediately to avoid timeout (gives us 15 minutes instead of 3 seconds)
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        
         try:
             if self.newRequest:
                 # Create new request using request manager
                 created_request = await self.request_manager.create_request(self.request, self.guild)
                 if created_request:
-                    await interaction.response.send_message(
+                    await interaction.followup.send(
                         f"✅ Your {self.request.type.value} request has been created successfully! "
                         f"Check out your request channel: <#{created_request.channel_id}>",
                         ephemeral=True
@@ -117,7 +120,7 @@ class BaseRequestModal(discord.ui.Modal):
                                 await channel.send(embed=embed, view=view)
 
                 else:
-                    await interaction.response.send_message(
+                    await interaction.followup.send(
                         "❌ Failed to create request. Please try again.",
                         ephemeral=True
                     )
@@ -125,17 +128,17 @@ class BaseRequestModal(discord.ui.Modal):
                 # Update existing request using request manager
                 updated_request = await self.request_manager.update_request(self.request)
                 if updated_request:
-                    await interaction.response.send_message(
+                    await interaction.followup.send(
                         f"✅ Your {self.request.type.value} request has been updated successfully!",
                         ephemeral=True
                     )
                 else:
-                    await interaction.response.send_message(
+                    await interaction.followup.send(
                         "❌ Failed to update request. Please try again.",
                         ephemeral=True
                     )
         except Exception as e:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"❌ An error occurred: {str(e)}",
                 ephemeral=True
             )
