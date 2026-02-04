@@ -2,7 +2,7 @@
 Request management service that handles both database operations and Discord server state.
 """
 
-from functools import lru_cache
+import asyncio
 import discord
 from discord.ext import commands
 from typing import Optional, List, Dict, Iterable
@@ -51,19 +51,16 @@ class RequestManager:
             request.requester_department_id = x[1]['role_id']
             
             
-            # 2.5: Place it in the appropriate category based on status
-            category = await self._get_category_for_status(request.status or RequestStatus.IN_QUEUE, guild)
-            if category:
-                await channel.edit(category=category)
-
             # 2.75: Create an additional assignee role and set the field accordingly
-
-            role = await guild.create_role(
-                name=f"{request.title[:20]} Assignees"
+            create_role_task = asyncio.create_task(
+                guild.create_role(name=f"{request.title[:20]} Assignees")
             )
-            request.additional_assignee_id = role.id
+            create_message_task = asyncio.create_task(
+                self._create_request_message(request, channel, send_warning=False)
+            )
 
-            await self._create_request_message(request, channel)
+            role, _ = await asyncio.gather(create_role_task, create_message_task)
+            request.additional_assignee_id = role.id
 
             # 3. Save to database
             created_request = await self.db.create_request(request)
@@ -76,7 +73,12 @@ class RequestManager:
             # 5. Set appropriate permissions and notifications
             await self._calculate_permissions(created_request, channel, guild)
 
-            await self.sort_status_category(created_request.status, guild)
+            asyncio.create_task(
+                self.sort_status_category(created_request.status, guild)
+            )
+            asyncio.create_task(
+                self._send_cycle_warning_if_needed(created_request, channel)
+            )
             
             logger.info(f"✅ Successfully created request {created_request.channel_id}")
             return created_request
@@ -488,7 +490,12 @@ class RequestManager:
         return int(dt.timestamp())
 
 
-    async def _create_request_message(self, request: Request, channel: discord.TextChannel):
+    async def _create_request_message(
+        self,
+        request: Request,
+        channel: discord.TextChannel,
+        send_warning: bool = True,
+    ):
         """Create the initial request message in the channel."""
         try:
             from datetime import datetime
@@ -530,7 +537,7 @@ class RequestManager:
             request.main_message_id = message.id
             request.created_at = datetime.now()
             # Check if posting date meets cycle criteria and send warning if not
-            if request.posting_date and request.created_at:
+            if send_warning and request.posting_date and request.created_at:
                 is_valid, reason = is_valid_posting_date(request.created_at, request.posting_date)
                 if not is_valid:
                     warning_embed = get_cycle_warning_embed(
@@ -543,6 +550,31 @@ class RequestManager:
             
         except Exception as e:
             logger.error(f"Error creating request message: {e}")
+
+    async def _send_cycle_warning_if_needed(
+        self,
+        request: Request,
+        channel: discord.TextChannel,
+    ) -> None:
+        """Send a cycle warning in the background if the posting date is invalid."""
+        try:
+            if not request.posting_date or not request.created_at:
+                return
+            from src.utils.cycle_helpers import is_valid_posting_date, get_cycle_warning_embed
+
+            is_valid, reason = is_valid_posting_date(request.created_at, request.posting_date)
+            if is_valid:
+                return
+
+            warning_embed = get_cycle_warning_embed(
+                request.created_at,
+                request.posting_date,
+                is_valid,
+                reason,
+            )
+            await channel.send(f"<@{request.requester_id}>", embed=warning_embed)
+        except Exception as e:
+            logger.error(f"Error sending cycle warning: {e}")
     
     async def _update_request_message(self, request: Request, channel: discord.TextChannel):
         """Update the request message with latest information."""
