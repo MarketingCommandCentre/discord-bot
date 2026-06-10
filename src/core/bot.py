@@ -68,6 +68,13 @@ class MarketingBot(commands.Bot):
             except Exception as e:
                 logger.error(f"Error loading utils cog: {e}")
             
+            # Load content outline cog
+            try:
+                await self.load_extension('src.commands.content_outline_cog')
+                logger.info("✅ Loaded content outline cog")
+            except Exception as e:
+                logger.error(f"Error loading content outline cog: {e}")
+
             # Load config management cog
             try:
                 await self.load_extension('src.commands.config_cog')

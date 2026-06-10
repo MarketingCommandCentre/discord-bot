@@ -169,7 +169,7 @@ class SubgroupVisibilityView(discord.ui.View):
     def _create_subgroup_callback(self, subgroup_data: dict, display_name: str):
         """Create callback function for subgroup button"""
         async def callback(interaction: discord.Interaction):
-            await self.request_manager.update_requester_department(interaction.channel.id, subgroup_data['role_id'])
+            await self.request_manager.update_requester_department(interaction.channel.id, subgroup_data['role_id'], acting_user_id=interaction.user.id)
             # Disable all the buttons in this view and update the original message
             for child in self.children:
                 child.disabled = True

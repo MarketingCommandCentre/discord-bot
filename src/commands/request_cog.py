@@ -48,7 +48,7 @@ class RequestCog(commands.Cog):
                     ephemeral=True
                 )
                 return
-            request = await self.request_manager.advance_request_status(interaction.channel.id)
+            request = await self.request_manager.advance_request_status(interaction.channel.id, acting_user_id=interaction.user.id)
             await interaction.response.send_message(
                 f"✅ Request status advanced to {request.status.value}.",
                 ephemeral=True
@@ -77,7 +77,7 @@ class RequestCog(commands.Cog):
                 return
             
             # Assign the request
-            updated_request = await self.request_manager.assign_request(interaction.channel.id, user.id)
+            updated_request = await self.request_manager.assign_request(interaction.channel.id, user.id, acting_user_id=interaction.user.id)
             if updated_request:
                 await interaction.response.send_message(
                     f"✅ Request assigned to {user.mention}",
@@ -211,7 +211,7 @@ class RequestCog(commands.Cog):
             new_request.title = f"{new_request.title} (Split)"
             
             # Create the new request
-            created_request = await self.request_manager.create_request(new_request, interaction.guild)
+            created_request = await self.request_manager.create_request(new_request, interaction.guild, acting_user_id=interaction.user.id)
             
             if created_request:
                 # Copy members from original additional assignee role to the new one

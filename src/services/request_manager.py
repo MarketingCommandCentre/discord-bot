@@ -27,7 +27,7 @@ class RequestManager:
         self.bot = bot
         self.db = db_client
     
-    async def create_request(self, request: Request, guild: discord.Guild) -> Optional[Request]:
+    async def create_request(self, request: Request, guild: discord.Guild, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Create a new request with full Discord integration.
         
@@ -66,7 +66,7 @@ class RequestManager:
             await self._create_request_message(request, channel)
 
             # 3. Save to database
-            created_request = await self.db.create_request(request)
+            created_request = await self.db.create_request(request, acting_user_id=acting_user_id)
             if not created_request:
                 # Cleanup: delete the channel if database save failed
                 await channel.delete(reason="Database save failed")
@@ -85,7 +85,7 @@ class RequestManager:
             logger.error(f"Error creating request: {e}")
             return None
     
-    async def update_request(self, request: Request) -> Optional[Request]:
+    async def update_request(self, request: Request, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Update an existing request in both database and Discord.
         
@@ -105,7 +105,7 @@ class RequestManager:
                 )
 
             # 1. Update in database
-            updated_request = await self.db.update_request(request.channel_id, request)
+            updated_request = await self.db.update_request(request.channel_id, request, acting_user_id=acting_user_id)
             if not updated_request:
                 logger.error("Failed to update request in database")
                 return None
@@ -125,7 +125,7 @@ class RequestManager:
             logger.error(f"Error updating request: {e}")
             return None
     
-    async def advance_request_status(self, channel_id: int) -> Optional[Request]:
+    async def advance_request_status(self, channel_id: int, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Advance a request to the next status and move channel accordingly.
         
@@ -137,7 +137,7 @@ class RequestManager:
         """
         try:
             # 1. Advance status in database
-            updated_request = await self.db.advance_request_to_next_status(channel_id)
+            updated_request = await self.db.advance_request_to_next_status(channel_id, acting_user_id=acting_user_id)
             if not updated_request:
                 logger.error("Failed to advance request status in database")
                 return None
@@ -159,7 +159,7 @@ class RequestManager:
             logger.error(f"Error advancing request status: {e}")
             return None
     
-    async def sync_status_from_category(self, channel_id: int, category_id: int) -> Optional[Request]:
+    async def sync_status_from_category(self, channel_id: int, category_id: int, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Sync request status based on category change (triggered by manual move).
         
@@ -182,7 +182,7 @@ class RequestManager:
             
             # Update status in database
             status = RequestStatus(status_str)
-            updated_request = await self.db.set_request_status(channel_id, status)
+            updated_request = await self.db.set_request_status(channel_id, status, acting_user_id=acting_user_id)
             if not updated_request:
                 logger.error("Failed to update request status in database")
                 return None
@@ -202,7 +202,7 @@ class RequestManager:
             logger.error(f"Error syncing status from category: {e}")
             return None
     
-    async def assign_request(self, channel_id: int, assigned_to_id: int) -> Optional[Request]:
+    async def assign_request(self, channel_id: int, assigned_to_id: int, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Assign a request to a user and update Discord permissions.
         
@@ -215,7 +215,7 @@ class RequestManager:
         """
         try:
             # 1. Assign in database
-            updated_request = await self.db.assign_request(channel_id, assigned_to_id)
+            updated_request = await self.db.assign_request(channel_id, assigned_to_id, acting_user_id=acting_user_id)
             if not updated_request:
                 logger.error("Failed to assign request in database")
                 return None
@@ -233,7 +233,7 @@ class RequestManager:
             logger.error(f"Error assigning request: {e}")
             return None
     
-    async def delete_request(self, channel_id: int) -> bool:
+    async def delete_request(self, channel_id: int, acting_user_id: Optional[int] = None) -> bool:
         """
         Delete a request from both database and Discord.
         
@@ -246,7 +246,7 @@ class RequestManager:
         try:
             # 1. Delete from database
             request = await self.get_request(channel_id)
-            success = await self.db.delete_request(channel_id)
+            success = await self.db.delete_request(channel_id, acting_user_id=acting_user_id)
             if not success:
                 logger.error("Failed to delete request from database")
                 return False
@@ -269,7 +269,7 @@ class RequestManager:
             logger.error(f"Error deleting request: {e}")
             return False
 
-    async def set_request_status(self, channel_id: int, status: RequestStatus) -> Optional[Request]:
+    async def set_request_status(self, channel_id: int, status: RequestStatus, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Set the status of a request and update Discord channel accordingly.
         
@@ -282,7 +282,7 @@ class RequestManager:
         """
         try:
             # 1. Update status in database
-            updated_request = await self.db.set_request_status(channel_id, status)
+            updated_request = await self.db.set_request_status(channel_id, status, acting_user_id=acting_user_id)
             if not updated_request:
                 logger.error("Failed to set request status in database")
                 return None
@@ -343,7 +343,7 @@ class RequestManager:
                     
         return None
 
-    async def update_requester_department(self, channel_id: int, new_dept_id: int) -> Optional[Request]:
+    async def update_requester_department(self, channel_id: int, new_dept_id: int, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Update the department of the requester for a given request. This is useful for department subgroups
         
@@ -359,7 +359,7 @@ class RequestManager:
                 return None
             
             # Update the requester's department in the database
-            updated_request = await self.db.update_requester_department(channel_id, new_dept_id)
+            updated_request = await self.db.update_requester_department(channel_id, new_dept_id, acting_user_id=acting_user_id)
             if not updated_request:
                 logger.error("Failed to update requester department in database")
                 return None
@@ -373,7 +373,7 @@ class RequestManager:
             logger.error(f"Error updating requester department: {e}")
             return None
     
-    async def change_requester(self, channel_id: int, new_requester_id: int) -> Optional[Request]:
+    async def change_requester(self, channel_id: int, new_requester_id: int, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Change the requester for a given request.
         
@@ -391,7 +391,7 @@ class RequestManager:
                 return None
             
             # Update the requester in the database using the new endpoint
-            updated_request = await self.db.change_requester(channel_id, new_requester_id)
+            updated_request = await self.db.change_requester(channel_id, new_requester_id, acting_user_id=acting_user_id)
             if not updated_request:
                 logger.error("Failed to change requester in database")
                 return None
