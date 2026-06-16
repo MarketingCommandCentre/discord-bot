@@ -7,7 +7,6 @@ from discord.ext import commands
 import asyncio
 import logging
 from typing import Optional
-import os
 import traceback
 
 from src.commands.snow_cog import SnowDayCog
@@ -15,8 +14,7 @@ from src.commands.request_cog import RequestCog
 from src.services.request_manager import RequestManager
 from src.client.database_client import DatabaseClient
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
+# Logging is configured by the entry point (main.py setup_logging); just grab a logger here.
 logger = logging.getLogger(__name__)
 
 class MarketingBot(commands.Bot):
@@ -99,11 +97,13 @@ class MarketingBot(commands.Bot):
         try:
             from src.ui.views import RequestEditView, RequestView
 
-            REQUEST_VIEW_MESSAGE_ID = int(os.getenv("REQUEST_VIEW_MESSAGE_ID"))
-            request_view = RequestView(self.request_manager)
-            self.add_view(request_view, message_id=REQUEST_VIEW_MESSAGE_ID)
-            logger.info(f"✅ Registered RequestView for message {REQUEST_VIEW_MESSAGE_ID}")
-            
+            # Register the request-board view globally. Because its buttons use
+            # static custom_ids, this handler works for any message hosting it
+            # (e.g. the one posted via /setup-requests) and survives restarts —
+            # no need to track a specific message id.
+            self.add_view(RequestView(self.request_manager))
+            logger.info("✅ Registered persistent RequestView")
+
             # Get all requests from database in a single call
             all_requests = await self.db.get_all_requests()
             
