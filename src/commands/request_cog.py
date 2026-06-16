@@ -10,7 +10,8 @@ from discord import app_commands
 from src.ui.modals import BaseRequestModal
 from src.ui.views import RequestView
 from src.model.Models import Request
-from src.services.request_manager import RequestManager
+from src.services.request_manager import RequestManager, resolve_role
+from src.config.manager import config
 
 class RequestCog(commands.Cog):
     """Cog for handling marketing request commands."""
@@ -18,6 +19,16 @@ class RequestCog(commands.Cog):
     def __init__(self, bot, request_manager: RequestManager = None):
         self.bot = bot
         self.request_manager = request_manager
+
+    def _is_overseer(self, interaction: discord.Interaction) -> bool:
+        """Return True if the invoking user has an oversight role (Marketing Head / President)."""
+        roles_map = config.get("roles", {})
+        member_roles = getattr(interaction.user, "roles", [])
+        for key in config.get("oversight_roles", []):
+            role = resolve_role(interaction.guild, roles_map.get(key))
+            if role and role in member_roles:
+                return True
+        return False
 
     @app_commands.command(
         name="setup-requests",
@@ -93,6 +104,12 @@ class RequestCog(commands.Cog):
         description="Advance the status of a request to the next stage"
     )
     async def advance_request(self, interaction: discord.Interaction):
+        if not self._is_overseer(interaction):
+            await interaction.response.send_message(
+                "❌ Only the **Marketing Head** or **President** can advance requests.",
+                ephemeral=True
+            )
+            return
         try:
             request = await self.request_manager.get_request(interaction.channel.id)
             if not request:
@@ -101,11 +118,28 @@ class RequestCog(commands.Cog):
                     ephemeral=True
                 )
                 return
-            request = await self.request_manager.advance_request_status(interaction.channel.id)
-            await interaction.response.send_message(
-                f"✅ Request status advanced to {request.status.value}.",
-                ephemeral=True
-            )
+            request, channel_moved = await self.request_manager.advance_request_status(interaction.channel.id)
+            if not request:
+                await interaction.response.send_message(
+                    "❌ Couldn't advance this request. It may already be **Done**/**Blocked**, "
+                    "or the backend is unreachable.",
+                    ephemeral=True
+                )
+                return
+
+            status_label = request.status.value.replace('_', ' ').title()
+            if channel_moved:
+                await interaction.response.send_message(
+                    f"✅ Request status advanced to **{status_label}**.",
+                    ephemeral=True
+                )
+            else:
+                await interaction.response.send_message(
+                    f"⚠️ Status advanced to **{status_label}** in the database, but I couldn't move "
+                    f"this channel into the **{status_label}** category. Check that a category for "
+                    f"**{status_label}** exists and that I have the **Manage Channels** permission on it.",
+                    ephemeral=True
+                )
         except Exception as e:
             await interaction.response.send_message(
                 f"❌ An error occurred: {str(e)}",
@@ -119,6 +153,12 @@ class RequestCog(commands.Cog):
     @app_commands.describe(user="The user to assign this request to")
     async def assign_request(self, interaction: discord.Interaction, user: discord.Member):
         """Assign a request to a specific user."""
+        if not self._is_overseer(interaction):
+            await interaction.response.send_message(
+                "❌ Only the **Marketing Head** or **President** can assign requests.",
+                ephemeral=True
+            )
+            return
         try:
             # Check if this is a request channel
             request = await self.request_manager.get_request(interaction.channel.id)
@@ -162,6 +202,12 @@ class RequestCog(commands.Cog):
         role: discord.Role = None
     ):
         """Add a user or all members of a role to the additional assignees."""
+        if not self._is_overseer(interaction):
+            await interaction.response.send_message(
+                "❌ Only the **Marketing Head** or **President** can add assignees.",
+                ephemeral=True
+            )
+            return
         try:
             # Check if this is a request channel
             request = await self.request_manager.get_request(interaction.channel.id)
@@ -236,6 +282,12 @@ class RequestCog(commands.Cog):
     )
     async def split_task(self, interaction: discord.Interaction):
         """Create a fork/copy of the current request as a new request."""
+        if not self._is_overseer(interaction):
+            await interaction.response.send_message(
+                "❌ Only the **Marketing Head** or **President** can split requests.",
+                ephemeral=True
+            )
+            return
         try:
             # Check if this is a request channel
             original_request = await self.request_manager.get_request(interaction.channel.id)

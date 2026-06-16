@@ -14,8 +14,7 @@ from src.commands.request_cog import RequestCog
 from src.services.request_manager import RequestManager
 from src.client.database_client import DatabaseClient
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
+# Logging is configured by the entry point (main.py setup_logging); just grab a logger here.
 logger = logging.getLogger(__name__)
 
 class MarketingBot(commands.Bot):
