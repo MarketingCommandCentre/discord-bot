@@ -55,9 +55,6 @@ class MarketingBot(commands.Bot):
 
             logger.info("✅ Loaded request command cog")
 
-            await self.load_extension('src.commands.cycle_cog')
-            logger.info("✅ Loaded cycle command cog")
-            
             # Load utils cog for daily reminders and VC forking
             try:
                 from src.commands.utils_cog import UtilsCog

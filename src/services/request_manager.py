@@ -533,7 +533,7 @@ class RequestManager:
         """Create the initial request message in the channel."""
         try:
             from datetime import datetime
-            from src.utils.cycle_helpers import is_valid_posting_date, get_cycle_warning_embed
+            from src.utils.posting_helpers import is_valid_posting_date, get_posting_warning_embed
             
             embed = discord.Embed(
                 title=f"[{request.type.value.upper()}] {request.title}",
@@ -570,16 +570,11 @@ class RequestManager:
             await message.pin()
             request.main_message_id = message.id
             request.created_at = datetime.now()
-            # Check if posting date meets cycle criteria and send warning if not
+            # Warn the requester if the request was made less than 2 weeks before the posting date
             if request.posting_date and request.created_at:
                 is_valid, reason = is_valid_posting_date(request.created_at, request.posting_date)
                 if not is_valid:
-                    warning_embed = get_cycle_warning_embed(
-                        request.created_at,
-                        request.posting_date,
-                        is_valid,
-                        reason
-                    )
+                    warning_embed = get_posting_warning_embed(is_valid, reason)
                     await channel.send(f"<@{request.requester_id}>", embed=warning_embed)
             
         except Exception as e:
