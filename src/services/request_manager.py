@@ -39,6 +39,24 @@ def resolve_role(guild: discord.Guild, identifier) -> Optional[discord.Role]:
     return None
 
 
+# Emoji shown in request channel names, and sort order within a status category.
+REQUEST_TYPE_EMOJIS = {
+    RequestType.POST: "📸",
+    RequestType.REEL: "🎥",
+    RequestType.PHOTOGRAPHY: "📷",
+    RequestType.WEBSITE: "🌐",
+    RequestType.MISC: "📋",
+}
+
+REQUEST_TYPE_SORT_RANK = {
+    RequestType.POST: 0,
+    RequestType.REEL: 1,
+    RequestType.PHOTOGRAPHY: 2,
+    RequestType.WEBSITE: 3,
+    RequestType.MISC: 4,
+}
+
+
 class RequestManager:
     """
     Service class that manages the complete lifecycle of marketing requests.
@@ -212,11 +230,16 @@ class RequestManager:
             The updated request, or None if failed
         """
         try:
-            from src.config.manager import get_status_for_category_id
+            from src.config.manager import get_status_for_category_id, get_status_for_category_name
             from src.model.Models import RequestStatus
-            
-            # Get status for the new category
+
+            # Map the moved-into category to a status — by configured ID first,
+            # then by the category's NAME (portable across servers).
             status_str = get_status_for_category_id(category_id)
+            if not status_str:
+                category = self.bot.get_channel(category_id)
+                if category is not None:
+                    status_str = get_status_for_category_name(category.name)
             if not status_str:
                 logger.info(f"Category {category_id} is not mapped to any request status")
                 return None
@@ -504,7 +527,7 @@ class RequestManager:
         try:
             # Get the appropriate category based on request status
             category = await self._get_category_for_status(request.status or RequestStatus.IN_QUEUE, guild)
-            emoji = "📸" if request.type == RequestType.POST else "🎥"
+            emoji = REQUEST_TYPE_EMOJIS.get(request.type, "📋")
             # Create channel name
             channel_name = f"{request.title}"[:40]  # Discord limit
             channel_name = "".join(c if c.isalnum() or c in '-_' else '-' for c in channel_name.lower())
@@ -572,7 +595,7 @@ class RequestManager:
             request.created_at = datetime.now()
             # Warn the requester if the request was made less than 2 weeks before the posting date
             if request.posting_date and request.created_at:
-                is_valid, reason = is_valid_posting_date(request.created_at, request.posting_date)
+                is_valid, reason = is_valid_posting_date(request.created_at, request.posting_date, request.type)
                 if not is_valid:
                     warning_embed = get_posting_warning_embed(is_valid, reason)
                     await channel.send(f"<@{request.requester_id}>", embed=warning_embed)
@@ -632,7 +655,8 @@ class RequestManager:
             # Update channel topic
             new_topic = f"{request.type.value} Request - {request.title} | Status: {request.status.value.replace('_', ' ').title()}"
             await channel.edit(topic=new_topic)
-            new_name = f"{'📸' if request.type == RequestType.POST else '🎥'}-{request.title}"[:40]
+            emoji = REQUEST_TYPE_EMOJIS.get(request.type, "📋")
+            new_name = f"{emoji}-{request.title}"[:40]
             await channel.edit(name=new_name)
             
         except Exception as e:
@@ -747,22 +771,35 @@ class RequestManager:
             logger.error(f"Error setting up channel permissions: {e}")
 
     async def _get_category_for_status(self, status: RequestStatus, guild: discord.Guild) -> Optional[discord.CategoryChannel]:
-        """Get the Discord category for a given request status."""
+        """Get the Discord category for a given request status.
+
+        Resolves by the configured category ID first (fast, exact). If that ID is
+        missing or no longer points at a valid category (e.g. on a different
+        server), falls back to matching the configured category NAME against the
+        guild's categories. The name fallback makes the bot portable across
+        servers without hard-coded IDs.
+        """
         try:
-            # Direct lookup: get category ID from config based on status
+            # 1. Try the configured category ID.
             category_id = get_category_id_for_status(status.value)
-            if not category_id:
-                logger.error(f"No category ID configured for status {status.value}")
-                return None
-            
-            # Get the category channel
-            category = guild.get_channel(category_id)
-            if not category or not isinstance(category, discord.CategoryChannel):
-                logger.error(f"Category ID {category_id} for status {status.value} is not a valid category channel")
-                return None
-            
-            return category
-            
+            if category_id:
+                category = guild.get_channel(category_id)
+                if isinstance(category, discord.CategoryChannel):
+                    return category
+
+            # 2. Fall back to matching by the configured category name (portable).
+            category_name = get_category_name_for_status(status.value)
+            if category_name:
+                category = discord.utils.get(guild.categories, name=category_name)
+                if category:
+                    return category
+
+            logger.error(
+                f"No category found for status '{status.value}' "
+                f"(configured id={category_id}, name={category_name!r})"
+            )
+            return None
+
         except Exception as e:
             logger.error(f"Error getting category for status {status.value}: {e}")
             return None
@@ -816,7 +853,7 @@ class RequestManager:
 
         def sort_key(channel: discord.TextChannel):
             request = request_map[channel.id]
-            type_rank = 0 if request.type == RequestType.POST else 1
+            type_rank = REQUEST_TYPE_SORT_RANK.get(request.type, 99)
             posting_timestamp = request.posting_date.timestamp()
             return (type_rank, posting_timestamp)
 

@@ -378,6 +378,17 @@ def get_status_for_category_id(category_id: int) -> Optional[str]:
             return status
     return None
 
+def get_status_for_category_name(category_name: str) -> Optional[str]:
+    """Get the request status for a given Discord category NAME.
+
+    Name-based counterpart to get_status_for_category_id, so category moves are
+    recognised on servers where the configured category IDs don't match.
+    """
+    for status in ['in_queue', 'in_progress', 'awaiting_posting', 'done', 'blocked']:
+        if get_category_name_for_status(status) == category_name:
+            return status
+    return None
+
 # --- Department and Subdepartment mutation helpers ---
 def create_subdepartment(dept_key: str, subgroup_key: str, display_name: str) -> bool:
     """Create a new sub-department entry under a department.

@@ -18,6 +18,21 @@
       "emoji": "🎥",
       "roles": ["content_creator", "photographer_videographer"],
       "color": 3447003
+    },
+    "photography": {
+      "emoji": "📷",
+      "roles": ["photographer_videographer"],
+      "color": 3447003
+    },
+    "website": {
+      "emoji": "🌐",
+      "roles": ["full_stack_developer"],
+      "color": 3447003
+    },
+    "misc": {
+      "emoji": "📋",
+      "roles": [],
+      "color": 3447003
     }
   },
   "departments": {

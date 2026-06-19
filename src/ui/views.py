@@ -25,9 +25,42 @@ class RequestView(discord.ui.View):
     async def reel_request(self, interaction: discord.Interaction, button: discord.ui.Button):
         from src.ui.modals import BaseRequestModal
         modal = BaseRequestModal(
-            title="Create Marketing Request", 
+            title="Create Marketing Request",
             request_manager=self.request_manager,
             request_type=RequestType.REEL,
+            guild=interaction.guild
+        )
+        await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="📷 Create Photography Request", style=discord.ButtonStyle.secondary, custom_id="persistent_photography")
+    async def photography_request(self, interaction: discord.Interaction, button: discord.ui.Button):
+        from src.ui.modals import BaseRequestModal
+        modal = BaseRequestModal(
+            title="Create Marketing Request",
+            request_manager=self.request_manager,
+            request_type=RequestType.PHOTOGRAPHY,
+            guild=interaction.guild
+        )
+        await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="🌐 Create Website Request", style=discord.ButtonStyle.secondary, custom_id="persistent_website")
+    async def website_request(self, interaction: discord.Interaction, button: discord.ui.Button):
+        from src.ui.modals import BaseRequestModal
+        modal = BaseRequestModal(
+            title="Create Marketing Request",
+            request_manager=self.request_manager,
+            request_type=RequestType.WEBSITE,
+            guild=interaction.guild
+        )
+        await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="📋 Create Misc. Request", style=discord.ButtonStyle.secondary, custom_id="persistent_misc")
+    async def misc_request(self, interaction: discord.Interaction, button: discord.ui.Button):
+        from src.ui.modals import BaseRequestModal
+        modal = BaseRequestModal(
+            title="Create Marketing Request",
+            request_manager=self.request_manager,
+            request_type=RequestType.MISC,
             guild=interaction.guild
         )
         await interaction.response.send_modal(modal)

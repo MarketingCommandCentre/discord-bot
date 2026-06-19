@@ -59,7 +59,10 @@ class RequestCog(commands.Cog):
                 "A dedicated channel will be created for your request where the "
                 "team can collaborate with you.\n\n"
                 "📸 **Create Post Request** — for static posts, graphics, and announcements.\n"
-                "📽️ **Create Reel Request** — for short-form video / reels content."
+                "📽️ **Create Reel Request** — for short-form video / reels content.\n"
+                "📷 **Create Photography Request** — for photo/video shoots and coverage.\n"
+                "🌐 **Create Website Request** — for website updates and development.\n"
+                "📋 **Create Misc. Request** — for anything that doesn't fit the above."
             ),
             color=0x5865F2
         )
