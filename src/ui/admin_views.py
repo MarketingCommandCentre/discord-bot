@@ -545,6 +545,24 @@ class TypeSelectView(ui.View):
                 emoji="📽️",
                 default=request.type == RequestType.REEL
             ),
+            discord.SelectOption(
+                label="Photography",
+                value=RequestType.PHOTOGRAPHY.value,
+                emoji="📷",
+                default=request.type == RequestType.PHOTOGRAPHY
+            ),
+            discord.SelectOption(
+                label="Website",
+                value=RequestType.WEBSITE.value,
+                emoji="🌐",
+                default=request.type == RequestType.WEBSITE
+            ),
+            discord.SelectOption(
+                label="Misc.",
+                value=RequestType.MISC.value,
+                emoji="📋",
+                default=request.type == RequestType.MISC
+            ),
         ]
         
         self.select = ui.Select(

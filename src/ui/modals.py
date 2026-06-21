@@ -4,6 +4,23 @@ from src.config.manager import BOT_CONFIG
 from src.services.request_manager import RequestManager
 from src.ui.views import SubgroupVisibilityView
 
+# Per-request-type field labels. Discord caps field labels at 45 characters,
+# so the longer ones are abbreviated to fit.
+DESCRIPTION_LABELS = {
+    RequestType.MISC: "Description (designs, merch, signage, etc.)",
+    RequestType.WEBSITE: "Description (Edit/Addition/Removal etc.)",
+    RequestType.PHOTOGRAPHY: "Description (time, date, location etc.)",
+}
+DEFAULT_DESCRIPTION_LABEL = "Description (include name + IG handle)"
+
+DATE_LABELS = {
+    RequestType.MISC: "I need this done by...",
+    RequestType.WEBSITE: "I need this done by...",
+    RequestType.PHOTOGRAPHY: "Event Date",
+}
+DEFAULT_DATE_LABEL = "Posting Date"
+
+
 class BaseRequestModal(discord.ui.Modal):
     request_manager: RequestManager
 
@@ -25,7 +42,7 @@ class BaseRequestModal(discord.ui.Modal):
         self.add_item(self.title_field)
         
         self.description_field = discord.ui.TextInput(
-            label="Description",
+            label=DESCRIPTION_LABELS.get(self.request.type, DEFAULT_DESCRIPTION_LABEL),
             placeholder="Provide details about what you need...",
             style=discord.TextStyle.paragraph,
             max_length=BOT_CONFIG["max_request_description_length"],
@@ -35,7 +52,7 @@ class BaseRequestModal(discord.ui.Modal):
         self.add_item(self.description_field)
         
         self.date_field = discord.ui.TextInput(
-            label="Posting Date",
+            label=DATE_LABELS.get(self.request.type, DEFAULT_DATE_LABEL),
             placeholder="MM/DD/YYYY (e.g., 12/25/2024)",
             max_length=10,
             required=True,
@@ -78,7 +95,16 @@ class BaseRequestModal(discord.ui.Modal):
                 ephemeral=True
             )
             return
-        
+
+        # Reject past dates on new requests — the date must be today or in the future.
+        # This runs before any channel is created, so the request simply doesn't go through.
+        if self.newRequest and self.request.posting_date.date() < datetime.now().date():
+            await interaction.response.send_message(
+                "❌ The date you entered is in the past. Please enter today's date or a future date.",
+                ephemeral=True
+            )
+            return
+
         # Set requester information
         self.request.requester_id = interaction.user.id
         

@@ -15,6 +15,9 @@ class RequestStatus(str, Enum):
 class RequestType(str, Enum):
     REEL = "reel"
     POST = "post"
+    MISC = "misc"
+    WEBSITE = "website"
+    PHOTOGRAPHY = "photography"
 
 @dataclass
 class Request:

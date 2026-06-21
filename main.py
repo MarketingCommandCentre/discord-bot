@@ -18,7 +18,8 @@ def setup_logging():
         handlers=[
             logging.StreamHandler(),
             logging.FileHandler('bot.log', encoding='utf-8')
-        ]
+        ],
+        force=True  # Override any handlers configured during module imports
     )
 
 

@@ -17,6 +17,46 @@ from src.config.manager import config, get_category_id_for_status, get_category_
 logger = logging.getLogger(__name__)
 
 
+def resolve_role(guild: discord.Guild, identifier) -> Optional[discord.Role]:
+    """Resolve a Discord role from config by numeric ID or by role name.
+
+    Accepting either form lets settings.json use human-readable role names
+    (e.g. "Content Creator") so the config stays readable and portable across
+    servers, while still honouring numeric IDs when they are provided.
+
+    NOTE: name matching is exact and case-sensitive. If a role is renamed in
+    Discord, update settings.json to match (or use the numeric ID instead).
+    """
+    if identifier is None or guild is None:
+        return None
+    if isinstance(identifier, int):
+        return guild.get_role(identifier)
+    if isinstance(identifier, str):
+        identifier = identifier.strip()
+        if identifier.isdigit():
+            return guild.get_role(int(identifier))
+        return discord.utils.get(guild.roles, name=identifier)
+    return None
+
+
+# Emoji shown in request channel names, and sort order within a status category.
+REQUEST_TYPE_EMOJIS = {
+    RequestType.POST: "📸",
+    RequestType.REEL: "🎥",
+    RequestType.PHOTOGRAPHY: "📷",
+    RequestType.WEBSITE: "🌐",
+    RequestType.MISC: "📋",
+}
+
+REQUEST_TYPE_SORT_RANK = {
+    RequestType.POST: 0,
+    RequestType.REEL: 1,
+    RequestType.PHOTOGRAPHY: 2,
+    RequestType.WEBSITE: 3,
+    RequestType.MISC: 4,
+}
+
+
 class RequestManager:
     """
     Service class that manages the complete lifecycle of marketing requests.
@@ -47,10 +87,21 @@ class RequestManager:
             
             # 2. Update request with channel ID
             request.channel_id = channel.id
-            x = await self.get_requester_department(request.requester_id)
-            request.requester_department_id = x[1]['role_id']
-            
-            
+            # Resolve the requester's department (if they belong to one). Anyone can
+            # submit a request, so a missing department is fine — it just means no
+            # department-wide access is granted (the requester still gets personal access).
+            dept = await self.get_requester_department(request.requester_id)
+            if dept:
+                _, dept_info = dept
+                dept_role = (
+                    resolve_role(guild, dept_info.get("role_id"))
+                    or resolve_role(guild, dept_info.get("role_name"))
+                )
+                request.requester_department_id = dept_role.id if dept_role else None
+            else:
+                request.requester_department_id = None
+
+
             # 2.5: Place it in the appropriate category based on status
             category = await self._get_category_for_status(request.status or RequestStatus.IN_QUEUE, guild)
             if category:
@@ -125,39 +176,47 @@ class RequestManager:
             logger.error(f"Error updating request: {e}")
             return None
     
-    async def advance_request_status(self, channel_id: int) -> Optional[Request]:
+    async def advance_request_status(self, channel_id: int) -> tuple[Optional[Request], bool]:
         """
         Advance a request to the next status and move channel accordingly.
-        
+
         Args:
             channel_id: The channel ID of the request
-            
+
         Returns:
-            The updated request, or None if failed
+            A tuple of (updated_request, channel_moved). updated_request is None if the
+            status could not be advanced; channel_moved is False if the Discord channel
+            could not be moved into the category for the new status.
         """
         try:
             # 1. Advance status in database
             updated_request = await self.db.advance_request_to_next_status(channel_id)
             if not updated_request:
                 logger.error("Failed to advance request status in database")
-                return None
-            
+                return None, False
+
             # 2. Move channel to appropriate category
             channel = self.bot.get_channel(channel_id)
+            channel_moved = False
             if channel and isinstance(channel, discord.TextChannel):
-                await self._move_channel_to_category(updated_request, channel)
+                channel_moved = await self._move_channel_to_category(updated_request, channel)
+                if not channel_moved:
+                    logger.warning(
+                        f"Request {channel_id} advanced to {updated_request.status.value} "
+                        f"but the channel could not be moved to the matching category"
+                    )
                 await self._update_request_message(updated_request, channel)
                 await self.sort_status_category(updated_request.status, channel.guild)
-            
+
             # 3. Recalculate permissions
             await self._calculate_permissions(updated_request, channel, self.bot.guilds[0])
 
             logger.info(f"✅ Advanced request {channel_id} to {updated_request.status}")
-            return updated_request
-            
+            return updated_request, channel_moved
+
         except Exception as e:
             logger.error(f"Error advancing request status: {e}")
-            return None
+            return None, False
     
     async def sync_status_from_category(self, channel_id: int, category_id: int) -> Optional[Request]:
         """
@@ -171,11 +230,16 @@ class RequestManager:
             The updated request, or None if failed
         """
         try:
-            from src.config.manager import get_status_for_category_id
+            from src.config.manager import get_status_for_category_id, get_status_for_category_name
             from src.model.Models import RequestStatus
-            
-            # Get status for the new category
+
+            # Map the moved-into category to a status — by configured ID first,
+            # then by the category's NAME (portable across servers).
             status_str = get_status_for_category_id(category_id)
+            if not status_str:
+                category = self.bot.get_channel(category_id)
+                if category is not None:
+                    status_str = get_status_for_category_name(category.name)
             if not status_str:
                 logger.info(f"Category {category_id} is not mapped to any request status")
                 return None
@@ -338,7 +402,7 @@ class RequestManager:
             
             for role in member.roles:
                 for dept_id, dept_info in departments.items():
-                    if role.id == dept_info.get("role_id"):
+                    if role.id == dept_info.get("role_id") or role.name == dept_info.get("role_name"):
                         return dept_id, dept_info
                     
         return None
@@ -463,7 +527,7 @@ class RequestManager:
         try:
             # Get the appropriate category based on request status
             category = await self._get_category_for_status(request.status or RequestStatus.IN_QUEUE, guild)
-            emoji = "📸" if request.type == RequestType.POST else "🎥"
+            emoji = REQUEST_TYPE_EMOJIS.get(request.type, "📋")
             # Create channel name
             channel_name = f"{request.title}"[:40]  # Discord limit
             channel_name = "".join(c if c.isalnum() or c in '-_' else '-' for c in channel_name.lower())
@@ -492,7 +556,7 @@ class RequestManager:
         """Create the initial request message in the channel."""
         try:
             from datetime import datetime
-            from src.utils.cycle_helpers import is_valid_posting_date, get_cycle_warning_embed
+            from src.utils.posting_helpers import is_valid_posting_date, get_posting_warning_embed
             
             embed = discord.Embed(
                 title=f"[{request.type.value.upper()}] {request.title}",
@@ -529,16 +593,11 @@ class RequestManager:
             await message.pin()
             request.main_message_id = message.id
             request.created_at = datetime.now()
-            # Check if posting date meets cycle criteria and send warning if not
+            # Warn the requester if the request was made less than 2 weeks before the posting date
             if request.posting_date and request.created_at:
-                is_valid, reason = is_valid_posting_date(request.created_at, request.posting_date)
+                is_valid, reason = is_valid_posting_date(request.created_at, request.posting_date, request.type)
                 if not is_valid:
-                    warning_embed = get_cycle_warning_embed(
-                        request.created_at,
-                        request.posting_date,
-                        is_valid,
-                        reason
-                    )
+                    warning_embed = get_posting_warning_embed(is_valid, reason)
                     await channel.send(f"<@{request.requester_id}>", embed=warning_embed)
             
         except Exception as e:
@@ -596,7 +655,8 @@ class RequestManager:
             # Update channel topic
             new_topic = f"{request.type.value} Request - {request.title} | Status: {request.status.value.replace('_', ' ').title()}"
             await channel.edit(topic=new_topic)
-            new_name = f"{'📸' if request.type == RequestType.POST else '🎥'}-{request.title}"[:40]
+            emoji = REQUEST_TYPE_EMOJIS.get(request.type, "📋")
+            new_name = f"{emoji}-{request.title}"[:40]
             await channel.edit(name=new_name)
             
         except Exception as e:
@@ -612,7 +672,19 @@ class RequestManager:
             overwrites[guild.default_role] = discord.PermissionOverwrite(
                 read_messages=False
             )
-            
+
+            # ALWAYS keep the bot itself able to see and manage this channel.
+            # Without this, denying @everyone above locks the bot out of the very
+            # channel it manages (unless it happens to be an Administrator), causing
+            # later moves/edits to fail with "50001 Missing Access".
+            if guild.me:
+                overwrites[guild.me] = discord.PermissionOverwrite(
+                    read_messages=True,
+                    send_messages=True,
+                    manage_channels=True,
+                    manage_messages=True
+                )
+
             # 1. ALWAYS: Additional Assignees role (read/write)
             if request.additional_assignee_id:
                 additional_assignees_role = guild.get_role(request.additional_assignee_id)
@@ -622,16 +694,37 @@ class RequestManager:
                         send_messages=True
                     )
             
-            # 2. ALWAYS: Requester's department (read/write)
+            # 2a. ALWAYS: the requester themselves can see their own request,
+            # even if they have no department role configured.
+            if request.requester_id:
+                requester_member = guild.get_member(request.requester_id)
+                if requester_member:
+                    overwrites[requester_member] = discord.PermissionOverwrite(
+                        read_messages=True,
+                        send_messages=True
+                    )
+
+            # 2b. ALWAYS: Requester's department (read/write), if they belong to one.
             if request.requester_department_id:
-                requester_dept_role = guild.get_role(request.requester_department_id)
+                requester_dept_role = resolve_role(guild, request.requester_department_id)
                 if requester_dept_role:
                     overwrites[requester_dept_role] = discord.PermissionOverwrite(
                         read_messages=True,
                         send_messages=True
                     )
-            
-            # 3. Assigned user OR Request type department
+
+            # 2c. ALWAYS: oversight roles (e.g. Marketing Head, President) keep access to
+            # every request channel, including after it has been assigned to someone.
+            roles_map = config.get("roles", {})
+            for role_key in config.get("oversight_roles", []):
+                oversight_role = resolve_role(guild, roles_map.get(role_key))
+                if oversight_role:
+                    overwrites[oversight_role] = discord.PermissionOverwrite(
+                        read_messages=True,
+                        send_messages=True
+                    )
+
+            # 3. Assigned user OR the marketing-team roles for this request type
             if request.assigned_to_id:
                 # If assigned to someone specific, only they can see it
                 assigned_user = guild.get_member(request.assigned_to_id)
@@ -642,30 +735,32 @@ class RequestManager:
                         manage_messages=True
                     )
             else:
-                # Not assigned: entire department for request type can see it
+                # Not assigned: the marketing-team roles for this request type can see it,
+                # so anyone on the relevant team can pick it up.
                 request_type_config = config.get("request_types", {}).get(request.type.value.lower(), {})
-                role_key = request_type_config.get("role")
-                
-                if role_key:
-                    role_id = config.get("roles", {}).get(role_key)
-                    if role_id:
-                        request_type_role = guild.get_role(role_id)
-                        if request_type_role:
-                            overwrites[request_type_role] = discord.PermissionOverwrite(
-                                read_messages=True,
-                                send_messages=True
-                            )
-            
-            # 4. If status is "awaiting_posting" or "done", add Social Media Manager
-            if request.status in [RequestStatus.AWAITING_POSTING, RequestStatus.DONE]:
-                social_media_role_id = config.get("roles", {}).get("social_media_manager")
-                if social_media_role_id:
-                    social_media_role = guild.get_role(social_media_role_id)
-                    if social_media_role:
-                        overwrites[social_media_role] = discord.PermissionOverwrite(
+                role_keys = request_type_config.get("roles")
+                if not role_keys:
+                    # Backward compatibility with the old single-role schema.
+                    single = request_type_config.get("role")
+                    role_keys = [single] if single else []
+
+                roles_map = config.get("roles", {})
+                for role_key in role_keys:
+                    request_type_role = resolve_role(guild, roles_map.get(role_key))
+                    if request_type_role:
+                        overwrites[request_type_role] = discord.PermissionOverwrite(
                             read_messages=True,
                             send_messages=True
                         )
+
+            # 4. If status is "awaiting_posting" or "done", add Social Media Manager
+            if request.status in [RequestStatus.AWAITING_POSTING, RequestStatus.DONE]:
+                social_media_role = resolve_role(guild, config.get("roles", {}).get("social_media_manager"))
+                if social_media_role:
+                    overwrites[social_media_role] = discord.PermissionOverwrite(
+                        read_messages=True,
+                        send_messages=True
+                    )
             
             # Apply all overwrites in a single API call
             await channel.edit(overwrites=overwrites)
@@ -676,35 +771,67 @@ class RequestManager:
             logger.error(f"Error setting up channel permissions: {e}")
 
     async def _get_category_for_status(self, status: RequestStatus, guild: discord.Guild) -> Optional[discord.CategoryChannel]:
-        """Get the Discord category for a given request status."""
+        """Get the Discord category for a given request status.
+
+        Resolves by the configured category ID first (fast, exact). If that ID is
+        missing or no longer points at a valid category (e.g. on a different
+        server), falls back to matching the configured category NAME against the
+        guild's categories. The name fallback makes the bot portable across
+        servers without hard-coded IDs.
+        """
         try:
-            # Direct lookup: get category ID from config based on status
+            # 1. Try the configured category ID.
             category_id = get_category_id_for_status(status.value)
-            if not category_id:
-                logger.error(f"No category ID configured for status {status.value}")
-                return None
-            
-            # Get the category channel
-            category = guild.get_channel(category_id)
-            if not category or not isinstance(category, discord.CategoryChannel):
-                logger.error(f"Category ID {category_id} for status {status.value} is not a valid category channel")
-                return None
-            
-            return category
-            
+            if category_id:
+                category = guild.get_channel(category_id)
+                if isinstance(category, discord.CategoryChannel):
+                    return category
+
+            # 2. Fall back to matching by the configured category name (portable).
+            category_name = get_category_name_for_status(status.value)
+            if category_name:
+                category = discord.utils.get(guild.categories, name=category_name)
+                if category:
+                    return category
+
+            logger.error(
+                f"No category found for status '{status.value}' "
+                f"(configured id={category_id}, name={category_name!r})"
+            )
+            return None
+
         except Exception as e:
             logger.error(f"Error getting category for status {status.value}: {e}")
             return None
     
-    async def _move_channel_to_category(self, request: Request, channel: discord.TextChannel):
-        """Move channel to the appropriate category based on status."""
+    async def _move_channel_to_category(self, request: Request, channel: discord.TextChannel) -> bool:
+        """Move channel to the appropriate category based on status.
+
+        Returns True if the channel is in (or was moved into) the correct category,
+        False if no valid category was found or the move was rejected by Discord.
+        """
         try:
             category = await self._get_category_for_status(request.status, channel.guild)
-            if category:
-                await channel.edit(category=category)
-            
+            if not category:
+                logger.error(
+                    f"No valid category configured for status '{request.status.value}'; "
+                    f"channel {channel.id} was not moved"
+                )
+                return False
+            # Already in the right place — nothing to do.
+            if channel.category_id == category.id:
+                return True
+            await channel.edit(category=category)
+            return True
+        except discord.Forbidden:
+            logger.error(
+                f"Missing 'Manage Channels' permission to move channel {channel.id} "
+                f"into the '{request.status.value}' category"
+            )
+            return False
         except Exception as e:
             logger.error(f"Error moving channel to category: {e}")
+            return False
 
     async def _sort_category_channels(
         self,
@@ -726,7 +853,7 @@ class RequestManager:
 
         def sort_key(channel: discord.TextChannel):
             request = request_map[channel.id]
-            type_rank = 0 if request.type == RequestType.POST else 1
+            type_rank = REQUEST_TYPE_SORT_RANK.get(request.type, 99)
             posting_timestamp = request.posting_date.timestamp()
             return (type_rank, posting_timestamp)
 

@@ -1,0 +1,118 @@
+{
+  "roles": {
+    "marketing_head": "Marketing Head",
+    "content_creator": "Content Creator",
+    "photographer_videographer": "Photographer/Videographer",
+    "social_media_manager": "Social Media Manager",
+    "full_stack_developer": "Full-Stack Developer",
+    "president": "President"
+  },
+  "oversight_roles": ["marketing_head", "president"],
+  "request_types": {
+    "post": {
+      "emoji": "📸",
+      "roles": ["content_creator", "photographer_videographer"],
+      "color": 3447003
+    },
+    "reel": {
+      "emoji": "🎥",
+      "roles": ["content_creator", "photographer_videographer"],
+      "color": 3447003
+    },
+    "photography": {
+      "emoji": "📷",
+      "roles": ["photographer_videographer"],
+      "color": 3447003
+    },
+    "website": {
+      "emoji": "🌐",
+      "roles": ["full_stack_developer"],
+      "color": 3447003
+    },
+    "misc": {
+      "emoji": "📋",
+      "roles": [],
+      "color": 3447003
+    }
+  },
+  "departments": {
+    "president_team": {
+      "name": "President Team",
+      "members": [],
+      "role_name": "President Team",
+      "role_id": null
+    },
+    "vp_equity": {
+      "name": "VP Equity Team",
+      "members": [],
+      "role_name": "VP Equity Team",
+      "role_id": null
+    },
+    "vp_ua": {
+      "name": "VP UA Team",
+      "members": [],
+      "role_name": "VP UA Team",
+      "role_id": null
+    },
+    "vp_campus_life": {
+      "name": "VP Campus Life Team",
+      "members": [],
+      "role_name": "VP Campus Life Team",
+      "role_id": null
+    },
+    "orientation": {
+      "name": "Orientation Team",
+      "members": [],
+      "role_name": "Orientation Team",
+      "role_id": null
+    },
+    "vp_internal": {
+      "name": "VP Internal Team",
+      "members": [],
+      "role_name": "VP Internal Team",
+      "role_id": null
+    },
+    "vp_external": {
+      "name": "VP External Team",
+      "members": [],
+      "role_name": "VP External Team",
+      "role_id": null
+    },
+    "services": {
+      "name": "Services Team",
+      "members": [],
+      "role_name": "Services Team",
+      "role_id": null
+    },
+    "events_membership": {
+      "name": "Events/Membership Team",
+      "members": [],
+      "role_name": "Events/Membership Team",
+      "role_id": null
+    }
+  },
+  "department_subgroups": {},
+  "categories": {
+    "queue": {
+      "name": "📥 In Queue",
+      "category_id": 1514817700172402749
+    },
+    "progress": {
+      "name": "🔄 In Progress",
+      "category_id": 1514817787380629635
+    },
+    "awaiting": {
+      "name": "⏳ Awaiting Posting",
+      "category_id": 1514817835606609961
+    },
+    "done": {
+      "name": "✅ Done",
+      "category_id": 1514817869559496764
+    },
+    "blocked": {
+      "name": "🚫 Blocked",
+      "category_id": 1514817908428243074
+    }
+  },
+  "bot_config": {"max_request_title_length": 999, "max_request_description_length": 999}
+}
