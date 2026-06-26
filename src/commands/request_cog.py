@@ -8,16 +8,69 @@ from discord.ext import commands
 from discord import app_commands
 
 from src.ui.modals import BaseRequestModal
+from src.ui.views import RequestView
 from src.model.Models import Request
 from src.services.request_manager import RequestManager
 
 class RequestCog(commands.Cog):
     """Cog for handling marketing request commands."""
-    
+
     def __init__(self, bot, request_manager: RequestManager = None):
         self.bot = bot
         self.request_manager = request_manager
-    
+
+    @app_commands.command(
+        name="setup-requests",
+        description="Post the permanent Marketing Request Centre message with request buttons (admin only)"
+    )
+    @app_commands.describe(
+        channel="The channel to post the request board in (defaults to the current channel)"
+    )
+    async def setup_requests(
+        self,
+        interaction: discord.Interaction,
+        channel: discord.TextChannel = None
+    ):
+        """Post a permanent message with buttons that let any user create a request."""
+        if not interaction.user.guild_permissions.manage_guild:
+            await interaction.response.send_message(
+                "❌ You need the Manage Server permission to use this command.",
+                ephemeral=True
+            )
+            return
+
+        target_channel = channel or interaction.channel
+
+        embed = discord.Embed(
+            title="📢 Marketing Request Centre",
+            description=(
+                "Use the buttons below to create a marketing request. "
+                "A dedicated channel will be created for your request where the "
+                "team can collaborate with you.\n\n"
+                "📸 **Create Post Request** — for static posts, graphics, and announcements.\n"
+                "📽️ **Create Reel Request** — for short-form video / reels content."
+            ),
+            color=0x5865F2
+        )
+        embed.set_footer(text="Click a button to open the request form.")
+
+        try:
+            await target_channel.send(embed=embed, view=RequestView(self.request_manager))
+            await interaction.response.send_message(
+                f"✅ Marketing Request Centre posted in {target_channel.mention}.",
+                ephemeral=True
+            )
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                f"❌ I don't have permission to send messages in {target_channel.mention}.",
+                ephemeral=True
+            )
+        except Exception as e:
+            await interaction.response.send_message(
+                f"❌ An error occurred: {str(e)}",
+                ephemeral=True
+            )
+
     @app_commands.command(
         name="request",
         description="Create a new marketing request"
@@ -280,7 +333,7 @@ class RequestCog(commands.Cog):
         except Exception as e:
             print(f"❌ Error removing channel {channel.id} from database: {e}")
 
-    
+
 
 
 async def setup(bot):
