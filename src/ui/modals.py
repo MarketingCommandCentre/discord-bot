@@ -88,7 +88,7 @@ class BaseRequestModal(discord.ui.Modal):
         try:
             if self.newRequest:
                 # Create new request using request manager
-                created_request = await self.request_manager.create_request(self.request, self.guild)
+                created_request = await self.request_manager.create_request(self.request, self.guild, acting_user_id=interaction.user.id)
                 if created_request:
                     await interaction.followup.send(
                         f"✅ Your {self.request.type.value} request has been created successfully! "
@@ -126,7 +126,7 @@ class BaseRequestModal(discord.ui.Modal):
                     )
             else:
                 # Update existing request using request manager
-                updated_request = await self.request_manager.update_request(self.request)
+                updated_request = await self.request_manager.update_request(self.request, acting_user_id=interaction.user.id)
                 if updated_request:
                     await interaction.followup.send(
                         f"✅ Your {self.request.type.value} request has been updated successfully!",

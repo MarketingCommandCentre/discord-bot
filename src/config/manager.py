@@ -343,6 +343,10 @@ def set_category_id_for_status(status: str, category_id: int) -> bool:
     if category_key:
         try:
             config.set_nested("categories", category_key, "category_id", value=category_id)
+            # Invalidate the cached lookup so the new ID takes effect immediately
+            # (otherwise get_category_id_for_status keeps returning the old one
+            # until the next config reload).
+            _category_id_cache.pop(status, None)
             return config.save_config()
         except Exception as e:
             print(f"Error setting category ID for status {status}: {e}")

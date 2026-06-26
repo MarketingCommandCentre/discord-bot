@@ -5,7 +5,7 @@ Utilities cog for background tasks and VC forking functionality.
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
-from datetime import datetime, time, date
+from datetime import datetime, time, date, timedelta
 import logging
 import asyncio
 from typing import Optional
@@ -43,7 +43,9 @@ class UtilsCog(commands.Cog):
             all_requests = await self.request_manager.db.get_all_requests()
             
             today = datetime.now().date()
+            three_days_ahead = today + timedelta(days=3)
             logger.info(f"Today's date: {today}")
+            logger.info(f"Three days ahead: {three_days_ahead}")
             
             marketing_role_id = config.get("server_config", {}).get("marketing_role_id")
             
@@ -55,7 +57,7 @@ class UtilsCog(commands.Cog):
             reminders_sent = 0
             
             for request in all_requests:
-                # Check if the posting date is today
+                # Check if the posting date is today or 3 days from now
                 # Handle both datetime and date objects
                 posting_date = request.posting_date
                 if posting_date:
@@ -63,9 +65,13 @@ class UtilsCog(commands.Cog):
                     if isinstance(posting_date, datetime):
                         posting_date = posting_date.date()
                     
-                    logger.debug(f"Checking request '{request.title}': posting_date={posting_date}, today={today}")
+                    logger.debug(f"Checking request '{request.title}': posting_date={posting_date}, today={today}, three_days_ahead={three_days_ahead}")
                     
-                    if posting_date == today and request.status not in [RequestStatus.BLOCKED, RequestStatus.DONE]:
+                    # Check if this is a reminder day (today or 3 days ahead)
+                    is_today = posting_date == today
+                    is_three_days_ahead = posting_date == three_days_ahead
+                    
+                    if (is_today or is_three_days_ahead) and request.status not in [RequestStatus.BLOCKED, RequestStatus.DONE]:
                         # Get the channel
                         channel = self.bot.get_channel(request.channel_id)
                         
@@ -74,12 +80,22 @@ class UtilsCog(commands.Cog):
                             marketing_role = channel.guild.get_role(marketing_role_id)
                             
                             if marketing_role:
-                                # Create reminder embed
-                                embed = discord.Embed(
-                                    title="📅 Posting Reminder",
-                                    description=f"This {request.type.value} is scheduled to be posted **TODAY**!",
-                                    color=0xFF9900  # Orange color for urgency
-                                )
+                                # Create reminder embed based on timing
+                                if is_today:
+                                    embed = discord.Embed(
+                                        title="📅 Posting Reminder - TODAY",
+                                        description=f"This {request.type.value} is scheduled to be posted **TODAY**!",
+                                        color=0xFF0000  # Red color for urgency
+                                    )
+                                    embed.set_footer(text="Don't forget to post this content today!")
+                                else:  # is_three_days_ahead
+                                    embed = discord.Embed(
+                                        title="📅 Posting Reminder - 3 Days",
+                                        description=f"This {request.type.value} is scheduled to be posted in **3 days** ({posting_date.strftime('%A, %B %d')})!",
+                                        color=0xFF9900  # Orange color for advance notice
+                                    )
+                                    embed.set_footer(text="Start preparing this content - posting date is approaching!")
+                                
                                 embed.add_field(
                                     name="Title",
                                     value=request.title,
@@ -97,7 +113,6 @@ class UtilsCog(commands.Cog):
                                         inline=True
                                     )
                                 
-                                embed.set_footer(text="Don't forget to post this content today!")
                                 embed.timestamp = datetime.now()
                                 
                                 # Send the reminder
@@ -107,7 +122,8 @@ class UtilsCog(commands.Cog):
                                 )
                                 
                                 reminders_sent += 1
-                                logger.info(f"Sent reminder for request '{request.title}' in channel {request.channel_id}")
+                                reminder_type = "today" if is_today else "3-day advance"
+                                logger.info(f"Sent {reminder_type} reminder for request '{request.title}' in channel {request.channel_id}")
                             else:
                                 logger.warning(f"Marketing role {marketing_role_id} not found in guild")
                         else:

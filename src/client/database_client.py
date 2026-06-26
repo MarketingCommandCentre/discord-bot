@@ -71,6 +71,13 @@ class DatabaseClient:
         """Close the aiohttp session."""
         if self._session and not self._session.closed:
             await self._session.close()
+
+    @staticmethod
+    def _actor_headers(acting_user_id: Optional[int]) -> Optional[dict]:
+        """Build per-request headers attributing a bot action to a Discord user."""
+        if acting_user_id is None:
+            return None
+        return {"X-Discord-User-Id": str(acting_user_id)}
     
     def _parse_datetime(self, datetime_str: str) -> datetime:
         """
@@ -249,16 +256,16 @@ class DatabaseClient:
             print(f"Error fetching requests by assignee: {e}")
             return []
     
-    async def create_request(self, request: Request) -> Optional[Request]:
+    async def create_request(self, request: Request, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Create a new request.
-        
+
         Endpoint: POST /api/requests
         """
         await self._ensure_session()
         try:
             data = self._request_to_dict(request)
-            async with self._session.post(f"{self.base_url}/api/requests", json=data) as response:
+            async with self._session.post(f"{self.base_url}/api/requests", json=data, headers=self._actor_headers(acting_user_id)) as response:
                 response.raise_for_status()
                 data = await response.json()
                 return self._parse_request(data)
@@ -266,10 +273,10 @@ class DatabaseClient:
             print(f"Error creating request: {e}")
             return None
     
-    async def update_request(self, channel_id: int, request: Request) -> Optional[Request]:
+    async def update_request(self, channel_id: int, request: Request, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Update an existing request.
-        
+
         Endpoint: PUT /api/requests/channel/{channelId}
         """
         await self._ensure_session()
@@ -277,7 +284,8 @@ class DatabaseClient:
             data = self._request_to_dict(request)
             async with self._session.put(
                 f"{self.base_url}/api/requests/channel/{channel_id}",
-                json=data
+                json=data,
+                headers=self._actor_headers(acting_user_id)
             ) as response:
                 response.raise_for_status()
                 data = await response.json()
@@ -288,31 +296,32 @@ class DatabaseClient:
             print(f"Error updating request: {e}")
             return None
     
-    async def delete_request(self, channel_id: int) -> bool:
+    async def delete_request(self, channel_id: int, acting_user_id: Optional[int] = None) -> bool:
         """
         Delete a request by channel ID.
-        
+
         Endpoint: DELETE /api/requests/channel/{channelId}
         """
         await self._ensure_session()
         try:
-            async with self._session.delete(f"{self.base_url}/api/requests/channel/{channel_id}") as response:
+            async with self._session.delete(f"{self.base_url}/api/requests/channel/{channel_id}", headers=self._actor_headers(acting_user_id)) as response:
                 response.raise_for_status()
                 return True
         except aiohttp.ClientError as e:
             print(f"Error deleting request {channel_id}: {e}")
             return False
     
-    async def assign_request(self, channel_id: int, assigned_to_id: int) -> Optional[Request]:
+    async def assign_request(self, channel_id: int, assigned_to_id: int, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Assign a request to a user.
-        
+
         Endpoint: PATCH /api/requests/channel/{channelId}/assign/{assignedToId}
         """
         await self._ensure_session()
         try:
             async with self._session.patch(
-                f"{self.base_url}/api/requests/channel/{channel_id}/assign/{assigned_to_id}"
+                f"{self.base_url}/api/requests/channel/{channel_id}/assign/{assigned_to_id}",
+                headers=self._actor_headers(acting_user_id)
             ) as response:
                 response.raise_for_status()
                 data = await response.json()
@@ -321,16 +330,17 @@ class DatabaseClient:
             print(f"Error assigning request {channel_id}: {e}")
             return None
     
-    async def set_request_status(self, channel_id: int, status: RequestStatus) -> Optional[Request]:
+    async def set_request_status(self, channel_id: int, status: RequestStatus, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Set the status of a request.
-        
+
         Endpoint: PATCH /api/requests/channel/{channelId}/status/{status}
         """
         await self._ensure_session()
         try:
             async with self._session.patch(
-                f"{self.base_url}/api/requests/channel/{channel_id}/status/{status.value}"
+                f"{self.base_url}/api/requests/channel/{channel_id}/status/{status.value}",
+                headers=self._actor_headers(acting_user_id)
             ) as response:
                 response.raise_for_status()
                 data = await response.json()
@@ -339,16 +349,17 @@ class DatabaseClient:
             print(f"Error setting request status {channel_id}: {e}")
             return None
     
-    async def advance_request_to_next_status(self, channel_id: int) -> Optional[Request]:
+    async def advance_request_to_next_status(self, channel_id: int, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Advance a request to the next status in the workflow.
-        
+
         Endpoint: PATCH /api/requests/channel/{channelId}/advance
         """
         await self._ensure_session()
         try:
             async with self._session.patch(
-                f"{self.base_url}/api/requests/channel/{channel_id}/advance"
+                f"{self.base_url}/api/requests/channel/{channel_id}/advance",
+                headers=self._actor_headers(acting_user_id)
             ) as response:
                 response.raise_for_status()
                 data = await response.json()
@@ -357,16 +368,17 @@ class DatabaseClient:
             print(f"Error advancing request {channel_id}: {e}")
             return None
     
-    async def update_requester_department(self, channel_id: int, department_id: int) -> Optional[Request]:
+    async def update_requester_department(self, channel_id: int, department_id: int, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Update the requester's department for a request.
-        
+
         Endpoint: PATCH /api/requests/channel/{channelId}/department/{departmentId}
         """
         await self._ensure_session()
         try:
             async with self._session.patch(
-                f"{self.base_url}/api/requests/channel/{channel_id}/department/{department_id}"
+                f"{self.base_url}/api/requests/channel/{channel_id}/department/{department_id}",
+                headers=self._actor_headers(acting_user_id)
             ) as response:
                 response.raise_for_status()
                 data = await response.json()
@@ -375,16 +387,17 @@ class DatabaseClient:
             print(f"Error updating requester department {channel_id}: {e}")
             return None
     
-    async def change_requester(self, channel_id: int, requester_id: int) -> Optional[Request]:
+    async def change_requester(self, channel_id: int, requester_id: int, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Change the requester of a request.
-        
+
         Endpoint: PATCH /api/requests/channel/{channelId}/requester/{requesterId}
         """
         await self._ensure_session()
         try:
             async with self._session.patch(
-                f"{self.base_url}/api/requests/channel/{channel_id}/requester/{requester_id}"
+                f"{self.base_url}/api/requests/channel/{channel_id}/requester/{requester_id}",
+                headers=self._actor_headers(acting_user_id)
             ) as response:
                 response.raise_for_status()
                 data = await response.json()

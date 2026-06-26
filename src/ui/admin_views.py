@@ -414,7 +414,7 @@ class AdminBasicInfoModal(ui.Modal):
                 return
         
         # Save to database
-        updated = await self.request_manager.update_request(self.request)
+        updated = await self.request_manager.update_request(self.request, acting_user_id=interaction.user.id)
         if updated:
             self.parent_view.request = updated
             # Update all buttons
@@ -491,7 +491,7 @@ class StatusSelectView(ui.View):
         new_status = RequestStatus(self.select.values[0])
         
         # Update status and move channel
-        updated = await self.request_manager.set_request_status(self.request.channel_id, new_status)
+        updated = await self.request_manager.set_request_status(self.request.channel_id, new_status, acting_user_id=interaction.user.id)
         
         if updated:
             self.parent_view.request = updated
@@ -557,8 +557,8 @@ class TypeSelectView(ui.View):
     async def on_select(self, interaction: discord.Interaction):
         new_type = RequestType(self.select.values[0])
         self.request.type = new_type
-        
-        updated = await self.request_manager.update_request(self.request)
+
+        updated = await self.request_manager.update_request(self.request, acting_user_id=interaction.user.id)
         
         if updated:
             self.parent_view.request = updated
@@ -618,7 +618,7 @@ class AssignmentSelectView(ui.View):
     @ui.button(label="Clear Assignee", style=discord.ButtonStyle.secondary, emoji="❌")
     async def clear_assignee(self, interaction: discord.Interaction, button: ui.Button):
         self.request.assigned_to_id = None
-        updated = await self.request_manager.update_request(self.request)
+        updated = await self.request_manager.update_request(self.request, acting_user_id=interaction.user.id)
         
         if updated:
             self.parent_view.request = updated
@@ -680,10 +680,10 @@ class ChangeUserModal(ui.Modal):
             
             # Use specific endpoint for changing requester
             if self.field == "requester":
-                updated = await self.request_manager.change_requester(self.request.channel_id, user_id)
+                updated = await self.request_manager.change_requester(self.request.channel_id, user_id, acting_user_id=interaction.user.id)
             else:
                 setattr(self.request, f"{self.field}_id", user_id)
-                updated = await self.request_manager.update_request(self.request)
+                updated = await self.request_manager.update_request(self.request, acting_user_id=interaction.user.id)
             
             if updated:
                 self.parent_view.request = updated
@@ -774,7 +774,7 @@ class DepartmentSelectView(ui.View):
             return
         
         # Update department using the request manager
-        updated = await self.request_manager.update_requester_department(self.request.channel_id, dept_id)
+        updated = await self.request_manager.update_requester_department(self.request.channel_id, dept_id, acting_user_id=interaction.user.id)
         
         if updated:
             self.parent_view.request = updated
@@ -928,7 +928,7 @@ class DeleteConfirmView(ui.View):
         
         try:
             # Delete from database first
-            deleted = await self.request_manager.db.delete_request(self.request.channel_id)
+            deleted = await self.request_manager.db.delete_request(self.request.channel_id, acting_user_id=interaction.user.id)
             
             if deleted:
                 # Then delete the channel

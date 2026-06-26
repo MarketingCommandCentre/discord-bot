@@ -3,6 +3,7 @@ Request management service that handles both database operations and Discord ser
 """
 
 from functools import lru_cache
+import re
 import discord
 from discord.ext import commands
 from typing import Optional, List, Dict, Iterable
@@ -12,7 +13,12 @@ from datetime import datetime, date
 
 from src.client.database_client import DatabaseClient
 from src.model.Models import Request, RequestStatus, RequestType
-from src.config.manager import config, get_category_id_for_status, get_category_name_for_status
+from src.config.manager import (
+    config,
+    get_category_id_for_status,
+    get_category_name_for_status,
+    set_category_id_for_status,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +28,16 @@ class RequestManager:
     Service class that manages the complete lifecycle of marketing requests.
     Handles both database persistence and Discord server state synchronization.
     """
-    
+
+    # Discord caps the number of channels in a single category at 50. When a
+    # status category (in practice, Done) hits this, we auto-rotate it.
+    DISCORD_CATEGORY_CHANNEL_LIMIT = 3
+
     def __init__(self, bot: commands.Bot, db_client: DatabaseClient):
         self.bot = bot
         self.db = db_client
     
-    async def create_request(self, request: Request, guild: discord.Guild) -> Optional[Request]:
+    async def create_request(self, request: Request, guild: discord.Guild, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Create a new request with full Discord integration.
         
@@ -66,7 +76,7 @@ class RequestManager:
             await self._create_request_message(request, channel)
 
             # 3. Save to database
-            created_request = await self.db.create_request(request)
+            created_request = await self.db.create_request(request, acting_user_id=acting_user_id)
             if not created_request:
                 # Cleanup: delete the channel if database save failed
                 await channel.delete(reason="Database save failed")
@@ -85,7 +95,7 @@ class RequestManager:
             logger.error(f"Error creating request: {e}")
             return None
     
-    async def update_request(self, request: Request) -> Optional[Request]:
+    async def update_request(self, request: Request, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Update an existing request in both database and Discord.
         
@@ -105,7 +115,7 @@ class RequestManager:
                 )
 
             # 1. Update in database
-            updated_request = await self.db.update_request(request.channel_id, request)
+            updated_request = await self.db.update_request(request.channel_id, request, acting_user_id=acting_user_id)
             if not updated_request:
                 logger.error("Failed to update request in database")
                 return None
@@ -125,7 +135,7 @@ class RequestManager:
             logger.error(f"Error updating request: {e}")
             return None
     
-    async def advance_request_status(self, channel_id: int) -> Optional[Request]:
+    async def advance_request_status(self, channel_id: int, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Advance a request to the next status and move channel accordingly.
         
@@ -137,7 +147,7 @@ class RequestManager:
         """
         try:
             # 1. Advance status in database
-            updated_request = await self.db.advance_request_to_next_status(channel_id)
+            updated_request = await self.db.advance_request_to_next_status(channel_id, acting_user_id=acting_user_id)
             if not updated_request:
                 logger.error("Failed to advance request status in database")
                 return None
@@ -159,7 +169,7 @@ class RequestManager:
             logger.error(f"Error advancing request status: {e}")
             return None
     
-    async def sync_status_from_category(self, channel_id: int, category_id: int) -> Optional[Request]:
+    async def sync_status_from_category(self, channel_id: int, category_id: int, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Sync request status based on category change (triggered by manual move).
         
@@ -182,7 +192,7 @@ class RequestManager:
             
             # Update status in database
             status = RequestStatus(status_str)
-            updated_request = await self.db.set_request_status(channel_id, status)
+            updated_request = await self.db.set_request_status(channel_id, status, acting_user_id=acting_user_id)
             if not updated_request:
                 logger.error("Failed to update request status in database")
                 return None
@@ -194,7 +204,20 @@ class RequestManager:
                 await self._calculate_permissions(updated_request, channel, self.bot.guilds[0])
                 await self._update_channel_metadata(updated_request, channel)
                 await self.sort_status_category(updated_request.status, channel.guild)
-            
+
+                # A manual drag can't go through the move-time rotation path, and
+                # Discord blocks dragging into an already-full category. So once a
+                # drag fills the destination, proactively archive it and spin up a
+                # fresh one here, keeping room for the next drag/move.
+                dest_category = channel.guild.get_channel(category_id)
+                if (
+                    isinstance(dest_category, discord.CategoryChannel)
+                    and len(dest_category.channels) >= self.DISCORD_CATEGORY_CHANNEL_LIMIT
+                ):
+                    await self._rotate_full_category(
+                        updated_request.status, dest_category, channel.guild
+                    )
+
             logger.info(f"✅ Synced request {channel_id} to status {status_str} from category move")
             return updated_request
             
@@ -202,7 +225,7 @@ class RequestManager:
             logger.error(f"Error syncing status from category: {e}")
             return None
     
-    async def assign_request(self, channel_id: int, assigned_to_id: int) -> Optional[Request]:
+    async def assign_request(self, channel_id: int, assigned_to_id: int, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Assign a request to a user and update Discord permissions.
         
@@ -215,7 +238,7 @@ class RequestManager:
         """
         try:
             # 1. Assign in database
-            updated_request = await self.db.assign_request(channel_id, assigned_to_id)
+            updated_request = await self.db.assign_request(channel_id, assigned_to_id, acting_user_id=acting_user_id)
             if not updated_request:
                 logger.error("Failed to assign request in database")
                 return None
@@ -233,7 +256,7 @@ class RequestManager:
             logger.error(f"Error assigning request: {e}")
             return None
     
-    async def delete_request(self, channel_id: int) -> bool:
+    async def delete_request(self, channel_id: int, acting_user_id: Optional[int] = None) -> bool:
         """
         Delete a request from both database and Discord.
         
@@ -246,7 +269,7 @@ class RequestManager:
         try:
             # 1. Delete from database
             request = await self.get_request(channel_id)
-            success = await self.db.delete_request(channel_id)
+            success = await self.db.delete_request(channel_id, acting_user_id=acting_user_id)
             if not success:
                 logger.error("Failed to delete request from database")
                 return False
@@ -269,7 +292,7 @@ class RequestManager:
             logger.error(f"Error deleting request: {e}")
             return False
 
-    async def set_request_status(self, channel_id: int, status: RequestStatus) -> Optional[Request]:
+    async def set_request_status(self, channel_id: int, status: RequestStatus, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Set the status of a request and update Discord channel accordingly.
         
@@ -282,7 +305,7 @@ class RequestManager:
         """
         try:
             # 1. Update status in database
-            updated_request = await self.db.set_request_status(channel_id, status)
+            updated_request = await self.db.set_request_status(channel_id, status, acting_user_id=acting_user_id)
             if not updated_request:
                 logger.error("Failed to set request status in database")
                 return None
@@ -343,7 +366,7 @@ class RequestManager:
                     
         return None
 
-    async def update_requester_department(self, channel_id: int, new_dept_id: int) -> Optional[Request]:
+    async def update_requester_department(self, channel_id: int, new_dept_id: int, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Update the department of the requester for a given request. This is useful for department subgroups
         
@@ -359,7 +382,7 @@ class RequestManager:
                 return None
             
             # Update the requester's department in the database
-            updated_request = await self.db.update_requester_department(channel_id, new_dept_id)
+            updated_request = await self.db.update_requester_department(channel_id, new_dept_id, acting_user_id=acting_user_id)
             if not updated_request:
                 logger.error("Failed to update requester department in database")
                 return None
@@ -373,7 +396,7 @@ class RequestManager:
             logger.error(f"Error updating requester department: {e}")
             return None
     
-    async def change_requester(self, channel_id: int, new_requester_id: int) -> Optional[Request]:
+    async def change_requester(self, channel_id: int, new_requester_id: int, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Change the requester for a given request.
         
@@ -391,7 +414,7 @@ class RequestManager:
                 return None
             
             # Update the requester in the database using the new endpoint
-            updated_request = await self.db.change_requester(channel_id, new_requester_id)
+            updated_request = await self.db.change_requester(channel_id, new_requester_id, acting_user_id=acting_user_id)
             if not updated_request:
                 logger.error("Failed to change requester in database")
                 return None
@@ -530,7 +553,9 @@ class RequestManager:
             request.main_message_id = message.id
             request.created_at = datetime.now()
             # Check if posting date meets cycle criteria and send warning if not
-            if request.posting_date and request.created_at:
+            cycle_warnings_enabled = config.get_nested(
+                "bot_config", "cycle_warnings_enabled", default=True)
+            if cycle_warnings_enabled and request.posting_date and request.created_at:
                 is_valid, reason = is_valid_posting_date(request.created_at, request.posting_date)
                 if not is_valid:
                     warning_embed = get_cycle_warning_embed(
@@ -699,12 +724,111 @@ class RequestManager:
     async def _move_channel_to_category(self, request: Request, channel: discord.TextChannel):
         """Move channel to the appropriate category based on status."""
         try:
-            category = await self._get_category_for_status(request.status, channel.guild)
-            if category:
-                await channel.edit(category=category)
-            
+            await self._assign_channel_to_category(request.status, channel, channel.guild)
         except Exception as e:
             logger.error(f"Error moving channel to category: {e}")
+
+    async def _assign_channel_to_category(
+        self,
+        status: RequestStatus,
+        channel: discord.TextChannel,
+        guild: discord.Guild,
+    ) -> None:
+        """Move ``channel`` into the category for ``status``, rotating it first
+        if it has hit Discord's per-category channel limit.
+
+        Discord caps a category at 50 channels. When the target (most commonly
+        Done) is full, we create a fresh category, repoint the config at it, and
+        rename the old one to an archive — automating what used to be a manual
+        create-config-rename dance. Both a proactive count check and a reactive
+        exception catch are used, so we rotate even if the count is briefly off.
+        """
+        category = await self._get_category_for_status(status, guild)
+        if not category:
+            return
+
+        # Proactive: rotate before we even attempt the move when already full.
+        if len(category.channels) >= self.DISCORD_CATEGORY_CHANNEL_LIMIT:
+            category = await self._rotate_full_category(status, category, guild) or category
+
+        try:
+            await channel.edit(category=category)
+        except discord.HTTPException as e:
+            if not self._is_category_full_error(e):
+                raise
+            # Reactive safety net: the category filled up between the check and
+            # the move (e.g. a concurrent request landed first).
+            logger.warning(
+                f"Category for status {status.value} is full; rotating to a new one"
+            )
+            new_category = await self._rotate_full_category(status, category, guild)
+            if not new_category:
+                raise
+            await channel.edit(category=new_category)
+
+    async def _rotate_full_category(
+        self,
+        status: RequestStatus,
+        full_category: discord.CategoryChannel,
+        guild: discord.Guild,
+    ) -> Optional[discord.CategoryChannel]:
+        """Archive a full status category and create a fresh active one.
+
+        Creates a new category in the old one's slot (same name and
+        permissions), renames the old one to an archive, and repoints the
+        config at the new category. Returns the new category, or None if the
+        rotation failed (the caller then keeps using the old one).
+        """
+        try:
+            # 1. New active category, same name/permissions, in the old slot.
+            new_category = await guild.create_category(
+                name=full_category.name,
+                overwrites=full_category.overwrites,
+                position=full_category.position,
+                reason=f"Auto-rotation: {status.value} category reached the channel limit",
+            )
+
+            # 2. Rename the now-full category so it reads as an archive.
+            archive_name = self._archive_name_for(full_category, guild)
+            await full_category.edit(
+                name=archive_name,
+                reason=f"Auto-rotation: archived full {status.value} category",
+            )
+
+            # 3. Point the config (and its cache) at the new active category.
+            set_category_id_for_status(status.value, new_category.id)
+
+            logger.info(
+                f"✅ Rotated {status.value} category: archived '{archive_name}' "
+                f"({full_category.id}) and created new active category {new_category.id}"
+            )
+            return new_category
+        except Exception as e:
+            logger.error(f"Failed to rotate full category for status {status.value}: {e}")
+            return None
+
+    @staticmethod
+    def _archive_name_for(full_category: discord.CategoryChannel, guild: discord.Guild) -> str:
+        """Build a unique archive name from a category's current name.
+
+        Strips any existing ``(Archive N)`` suffix so repeated rotations read as
+        ``Done (Archive 1)``, ``Done (Archive 2)`` rather than nesting suffixes.
+        """
+        base = re.sub(r"\s*\(Archive(?:\s+\d+)?\)\s*$", "", full_category.name).strip()
+        n = 1
+        while True:
+            candidate = f"{base} (Archive {n})"[:100]  # Discord category name limit
+            if not discord.utils.get(guild.categories, name=candidate):
+                return candidate
+            n += 1
+
+    @staticmethod
+    def _is_category_full_error(error: discord.HTTPException) -> bool:
+        """Heuristic check for Discord's "category is at capacity" error."""
+        text = (getattr(error, "text", "") or str(error)).lower()
+        return "category" in text and any(
+            kw in text for kw in ("maximum", "limit", "reached")
+        )
 
     async def _sort_category_channels(
         self,
