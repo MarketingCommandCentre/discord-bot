@@ -31,7 +31,7 @@ class RequestManager:
 
     # Discord caps the number of channels in a single category at 50. When a
     # status category (in practice, Done) hits this, we auto-rotate it.
-    DISCORD_CATEGORY_CHANNEL_LIMIT = 3
+    DISCORD_CATEGORY_CHANNEL_LIMIT = 50
 
     def __init__(self, bot: commands.Bot, db_client: DatabaseClient):
         self.bot = bot
