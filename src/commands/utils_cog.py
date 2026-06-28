@@ -150,7 +150,7 @@ class UtilsCog(commands.Cog):
 
     @app_commands.command(
         name="manage",
-        description="[Admin] Open the request management console (god mode)"
+        description="[Admin] Open the request management console"
     )
     @app_commands.describe(
         channel="The request channel to manage (defaults to current channel)"

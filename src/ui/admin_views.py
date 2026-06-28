@@ -1,5 +1,5 @@
 """
-Admin UI components for the "god mode" request management.
+Admin UI components for the request management console.
 Provides comprehensive editing capabilities for all request fields.
 """
 
@@ -54,7 +54,7 @@ class AdminRequestManageView(ui.View):
         """Generate the main embed showing current request state."""
         embed = discord.Embed(
             title="🔧 Request Management Console",
-            description=f"**God Mode** for request in <#{self.request.channel_id}>",
+            description=f"Root Console for request in <#{self.request.channel_id}>",
             color=0xFF6B35  # Orange for admin
         )
         
