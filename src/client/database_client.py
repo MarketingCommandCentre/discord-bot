@@ -387,6 +387,42 @@ class DatabaseClient:
             print(f"Error updating requester department {channel_id}: {e}")
             return None
     
+    async def log_audit_event(
+        self,
+        event_type: str,
+        entity_id: int,
+        event_details: str,
+        metadata: Optional[dict] = None,
+        entity_type: str = "Request",
+        acting_user_id: Optional[int] = None,
+    ) -> bool:
+        """
+        Record a standalone audit event for a Discord-only action (e.g. adding/removing
+        additional assignees) that has no corresponding request-mutation endpoint.
+
+        Endpoint: POST /api/audit-events
+        Returns True on success, False otherwise.
+        """
+        await self._ensure_session()
+        payload = {
+            "eventType": event_type,
+            "entityType": entity_type,
+            "entityId": entity_id,
+            "eventDetails": event_details,
+            "metadata": metadata,
+        }
+        try:
+            async with self._session.post(
+                f"{self.base_url}/api/audit-events",
+                json=payload,
+                headers=self._actor_headers(acting_user_id),
+            ) as response:
+                response.raise_for_status()
+                return True
+        except aiohttp.ClientError as e:
+            print(f"Error logging audit event {event_type} for {entity_id}: {e}")
+            return False
+
     async def change_requester(self, channel_id: int, requester_id: int, acting_user_id: Optional[int] = None) -> Optional[Request]:
         """
         Change the requester of a request.

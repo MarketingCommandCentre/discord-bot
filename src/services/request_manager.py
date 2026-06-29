@@ -256,6 +256,86 @@ class RequestManager:
             logger.error(f"Error assigning request: {e}")
             return None
     
+    async def add_additional_assignees(
+        self,
+        channel_id: int,
+        additional_role: discord.Role,
+        members: Iterable[discord.Member],
+        acting_user_id: Optional[int] = None,
+        via: str = "user",
+    ) -> List[discord.Member]:
+        """
+        Add members to a request's additional-assignee role and record an audit event.
+
+        Only members who don't already have the role are added. Returns the list of
+        members actually added (empty if everyone already had the role).
+        """
+        added: List[discord.Member] = []
+        for member in members:
+            if additional_role not in member.roles:
+                await member.add_roles(additional_role, reason="Added as additional assignee")
+                added.append(member)
+
+        if added:
+            await self.db.log_audit_event(
+                "ASSIGNEE_ADD",
+                channel_id,
+                f"Added {len(added)} additional assignee(s): "
+                + ", ".join(m.display_name for m in added),
+                metadata={"assigneeIds": [str(m.id) for m in added], "via": via},
+                acting_user_id=acting_user_id,
+            )
+        return added
+
+    async def remove_additional_assignees(
+        self,
+        channel_id: int,
+        additional_role: discord.Role,
+        members: Iterable[discord.Member],
+        acting_user_id: Optional[int] = None,
+        via: str = "user",
+    ) -> List[discord.Member]:
+        """
+        Remove members from a request's additional-assignee role and record an audit event.
+
+        Only members who currently have the role are removed. Returns the list of
+        members actually removed (empty if none had the role).
+        """
+        removed: List[discord.Member] = []
+        for member in members:
+            if additional_role in member.roles:
+                await member.remove_roles(additional_role, reason="Removed as additional assignee")
+                removed.append(member)
+
+        if removed:
+            await self.db.log_audit_event(
+                "ASSIGNEE_REMOVE",
+                channel_id,
+                f"Removed {len(removed)} additional assignee(s): "
+                + ", ".join(m.display_name for m in removed),
+                metadata={"assigneeIds": [str(m.id) for m in removed], "via": via},
+                acting_user_id=acting_user_id,
+            )
+        return removed
+
+    async def log_channel_action(
+        self,
+        event_type: str,
+        channel_id: int,
+        event_details: str,
+        metadata: Optional[dict] = None,
+        acting_user_id: Optional[int] = None,
+    ) -> bool:
+        """Thin pass-through for logging Discord-only channel actions (rename, permission
+        sync, category move, split) that have no dedicated request-mutation endpoint."""
+        return await self.db.log_audit_event(
+            event_type,
+            channel_id,
+            event_details,
+            metadata=metadata,
+            acting_user_id=acting_user_id,
+        )
+
     async def delete_request(self, channel_id: int, acting_user_id: Optional[int] = None) -> bool:
         """
         Delete a request from both database and Discord.

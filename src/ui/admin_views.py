@@ -821,6 +821,12 @@ class ChannelActionsView(ui.View):
         channel = self.guild.get_channel(self.request.channel_id)
         if channel and isinstance(channel, discord.TextChannel):
             await self.request_manager._calculate_permissions(self.request, channel, self.guild)
+            await self.request_manager.log_channel_action(
+                "PERMISSIONS_SYNC",
+                self.request.channel_id,
+                "Channel permissions synced",
+                acting_user_id=interaction.user.id,
+            )
             await interaction.followup.send("✅ Channel permissions synced.", ephemeral=True)
         else:
             await interaction.followup.send("❌ Channel not found.", ephemeral=True)
@@ -843,6 +849,13 @@ class ChannelActionsView(ui.View):
         channel = self.guild.get_channel(self.request.channel_id)
         if channel and isinstance(channel, discord.TextChannel):
             await self.request_manager._move_channel_to_category(self.request, channel)
+            await self.request_manager.log_channel_action(
+                "CATEGORY_MOVE",
+                self.request.channel_id,
+                f"Channel moved to correct category for status {self.request.status.value}",
+                metadata={"status": self.request.status.value},
+                acting_user_id=interaction.user.id,
+            )
             await interaction.followup.send("✅ Channel moved to correct category.", ephemeral=True)
         else:
             await interaction.followup.send("❌ Channel not found.", ephemeral=True)
@@ -889,7 +902,15 @@ class RenameChannelModal(ui.Modal):
         channel = self.guild.get_channel(self.request.channel_id)
         if channel and isinstance(channel, discord.TextChannel):
             try:
+                old_name = channel.name
                 await channel.edit(name=self.name_field.value)
+                await self.request_manager.log_channel_action(
+                    "CHANNEL_RENAME",
+                    self.request.channel_id,
+                    f"Channel renamed from '{old_name}' to '{self.name_field.value}'",
+                    metadata={"from": old_name, "to": self.name_field.value},
+                    acting_user_id=interaction.user.id,
+                )
                 await interaction.response.send_message(
                     f"✅ Channel renamed to **{self.name_field.value}**",
                     ephemeral=True
