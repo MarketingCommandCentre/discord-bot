@@ -132,6 +132,16 @@ STATIC_DEFAULTS = {
     "date_formats": {"input": "%m/%d/%Y", "display": "%B %d, %Y", "channel": "%m/%d"},
 }
 
+# Default channel for the request panel message (members click its buttons to
+# open a request). Find-or-created during setup.
+DEFAULT_REQUEST_CHANNEL = "request-marketing"
+
+# Button custom_ids for the request panel. These MUST stay in sync with
+# RequestView in src/ui/views.py -- the live bot reattaches its button handlers
+# to the posted message by matching on these ids at startup.
+REQUEST_PANEL_POST_CUSTOM_ID = "persistent_post"
+REQUEST_PANEL_REEL_CUSTOM_ID = "persistent_reel"
+
 
 # --- Prompt helpers (run blocking input() off the event loop) -----------------
 
@@ -192,6 +202,43 @@ async def get_or_create_category(guild: discord.Guild, name: str):
         return await prompt_manual_id(guild, "category", name), False
 
 
+async def get_or_create_text_channel(guild: discord.Guild, name: str):
+    """Link an existing text channel by name or create one. Returns (channel, created)."""
+    existing = find_by_name(
+        [c for c in guild.channels if isinstance(c, discord.TextChannel)], name)
+    if existing:
+        print(f"   🔗 Linked existing channel '#{name}' (id {existing.id})")
+        return existing, False
+    try:
+        channel = await guild.create_text_channel(name=name, reason="Marketing bot setup")
+        print(f"   ✅ Created channel '#{name}' (id {channel.id})")
+        return channel, True
+    except discord.Forbidden:
+        print(f"   ⚠️  Missing permission to create channel '{name}'.")
+        return None, False
+
+
+def build_request_panel_view() -> discord.ui.View:
+    """Build the persistent button panel members click to open a request.
+
+    The buttons carry no callbacks here -- this script only posts the message.
+    The live bot registers the real handlers (RequestView) against this
+    message's ID on startup, matching on the custom_ids defined above.
+    """
+    view = discord.ui.View(timeout=None)
+    view.add_item(discord.ui.Button(
+        label="📸 Create Post Request",
+        style=discord.ButtonStyle.primary,
+        custom_id=REQUEST_PANEL_POST_CUSTOM_ID,
+    ))
+    view.add_item(discord.ui.Button(
+        label="📽️ Create Reel Request",
+        style=discord.ButtonStyle.secondary,
+        custom_id=REQUEST_PANEL_REEL_CUSTOM_ID,
+    ))
+    return view
+
+
 async def prompt_manual_id(guild: discord.Guild, kind: str, name: str):
     """Fallback: ask the user to paste an ID when auto-creation isn't possible."""
     while True:
@@ -213,7 +260,7 @@ async def run_setup(guild: discord.Guild) -> dict:
     settings = {}
 
     # 1. Standard top-level roles -------------------------------------------------
-    print("Step 1/5 — Standard roles")
+    print("Step 1/6 — Standard roles")
     role_objs = {}
     settings["roles"] = {}
     for key, default_name in DEFAULT_ROLES.items():
@@ -223,7 +270,7 @@ async def run_setup(guild: discord.Guild) -> dict:
         settings["roles"][key] = role.id if role else None
 
     # 2. Departments + sub-departments -------------------------------------------
-    print("\nStep 2/5 — Departments")
+    print("\nStep 2/6 — Departments")
     use_defaults = await ask_yes_no(
         " Use the default department set (marketing, events, ie, charity)?", True)
     departments_plan = dict(DEFAULT_DEPARTMENTS) if use_defaults else {}
@@ -270,7 +317,7 @@ async def run_setup(guild: discord.Guild) -> dict:
                 }
 
     # 3. Kanban category channels ------------------------------------------------
-    print("\nStep 3/5 — Kanban categories")
+    print("\nStep 3/6 — Kanban categories")
     settings["categories"] = {}
     for key, (internal_name, default_display) in DEFAULT_CATEGORIES.items():
         display = await ask(f" Category channel name for '{key}'", default_display)
@@ -281,7 +328,7 @@ async def run_setup(guild: discord.Guild) -> dict:
         }
 
     # 4. Static (non-Discord) sections -------------------------------------------
-    print("\nStep 4/5 — Bot behaviour defaults")
+    print("\nStep 4/6 — Bot behaviour defaults")
     static = json.loads(json.dumps(STATIC_DEFAULTS))  # deep copy
     static["bot_config"]["command_prefix"] = await ask(
         " Command prefix", static["bot_config"]["command_prefix"])
@@ -292,7 +339,7 @@ async def run_setup(guild: discord.Guild) -> dict:
     settings.update(static)
 
     # 5. Server config (reminder channel + marketing role) -----------------------
-    print("\nStep 5/5 — Server config")
+    print("\nStep 5/6 — Server config")
     marketing_default = str(role_objs["admin"].id) if role_objs.get("admin") else ""
     print(" Marketing role is pinged for reminders/announcements.")
     marketing_role_id = role_objs["admin"].id if role_objs.get("admin") else None
@@ -317,6 +364,32 @@ async def run_setup(guild: discord.Guild) -> dict:
         "marketing_role_id": marketing_role_id,
         "reminder_channel_id": reminder_channel_id,
     }
+
+    # 6. Request panel message ---------------------------------------------------
+    print("\nStep 6/6 — Request panel message")
+    print(" Posts the message whose buttons members click to open a request.")
+    if await ask_yes_no(" Post the request panel message now?", True):
+        channel_name = await ask(" Channel to post it in", DEFAULT_REQUEST_CHANNEL)
+        channel, _ = await get_or_create_text_channel(guild, channel_name)
+        if channel:
+            try:
+                embed = discord.Embed(
+                    title="📋 Create a Marketing Request",
+                    description=(
+                        "Click a button below to open a request.\n\n"
+                        "📸 **Create Post Request** — for static posts / graphics\n"
+                        "📽️ **Create Reel Request** — for reels / video content"
+                    ),
+                    color=STATIC_DEFAULTS["embed_colors"]["info"],
+                )
+                message = await channel.send(embed=embed, view=build_request_panel_view())
+                print(f"\n   ✅ Request panel posted in #{channel.name}.")
+                print("   📌 Add this line to your .env so the bot can wire up the buttons:")
+                print(f"\n      REQUEST_VIEW_MESSAGE_ID={message.id}\n")
+            except discord.Forbidden:
+                print("   ⚠️  Missing permission to post in that channel; panel not posted.")
+        else:
+            print("   ⚠️  No channel available; panel not posted.")
 
     return settings
 

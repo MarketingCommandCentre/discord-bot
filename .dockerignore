@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.py[cod]
+*.log
+attachments/
+.env
+.env.*
+.git
+.gitignore
+*.md
+LICENSE
+inject_csv_to_api.py
