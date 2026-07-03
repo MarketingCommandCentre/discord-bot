@@ -81,6 +81,14 @@ class MarketingBot(commands.Bot):
                 logger.info("✅ Loaded config command cog")
             except Exception as e:
                 logger.error(f"Error loading config cog: {e}")
+
+            # Load mock request cog (Anthropic-backed mock data generation)
+            try:
+                from src.commands.mock_cog import MockCog
+                await self.add_cog(MockCog(self, request_manager=self.request_manager))
+                logger.info("✅ Loaded mock command cog")
+            except Exception as e:
+                logger.error(f"Error loading mock cog: {e}")
             
             # Register persistent views for edit buttons
             await self._setup_persistent_views()
