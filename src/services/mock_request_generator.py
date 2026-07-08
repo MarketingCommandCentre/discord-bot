@@ -94,7 +94,7 @@ class MockRequestGenerator:
         """Call Claude Haiku and return the parsed list of request dicts."""
         prompt = (
             f"Generate {count} realistic but entirely fictional marketing content "
-            "requests for a university student-life marketing team's command centre. "
+            "requests for a university Muslim Student Association marketing team's command centre. "
             "Each request is what a club or department would submit asking the "
             "marketing team to produce a social media post or reel for an event or "
             "initiative.\n\n"
