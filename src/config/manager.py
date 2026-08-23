@@ -4,7 +4,7 @@ Configuration management for the Marketing Command Centre Discord Bot
 
 import json
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from threading import Lock
 from functools import lru_cache
 
@@ -97,6 +97,11 @@ class ConfigManager:
                 "progress": "🔄 In Progress",
                 "awaiting": "⏳ Awaiting Posting",
                 "done": "✅ Done"
+            },
+            "story_requests": {
+                "enabled": True,
+                "forum_channel_id": None,
+                "ping_role_ids": []
             }
         }
         
@@ -195,6 +200,60 @@ def get_marketing_role_id() -> Optional[int]:
 def get_reminder_channel_id() -> Optional[int]:
     """Get the reminder channel ID from server config"""
     return config.get_nested("server_config", "reminder_channel_id")
+
+
+# --- Story request forum ping configuration ---
+# Config shape (top-level "story_requests" key in settings.json):
+#   {"enabled": bool, "forum_channel_id": int | null, "ping_role_ids": [int, ...]}
+STORY_REQUESTS_KEY = "story_requests"
+
+
+def _coerce_id(value: Any) -> Optional[int]:
+    """Coerce a config value to a Discord snowflake, or None if it isn't one.
+    Guards against IDs hand-edited into settings.json as strings or nulls."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def is_story_request_ping_enabled() -> bool:
+    """Whether new-thread pings in the story requests forum are turned on.
+    Defaults to True so setting a channel is enough to switch the feature on."""
+    return bool(config.get_nested(STORY_REQUESTS_KEY, "enabled", default=True))
+
+
+def set_story_request_ping_enabled(enabled: bool) -> bool:
+    """Enable or disable story request pings. Returns True if persisted."""
+    config.set_nested(STORY_REQUESTS_KEY, "enabled", value=bool(enabled))
+    return config.save_config()
+
+
+def get_story_request_forum_channel_id() -> Optional[int]:
+    """Get the forum channel ID watched for new story request threads."""
+    return _coerce_id(config.get_nested(STORY_REQUESTS_KEY, "forum_channel_id"))
+
+
+def set_story_request_forum_channel_id(channel_id: Optional[int]) -> bool:
+    """Set (or clear, with None) the story requests forum channel.
+    Returns True if persisted."""
+    config.set_nested(STORY_REQUESTS_KEY, "forum_channel_id", value=channel_id)
+    return config.save_config()
+
+
+def get_story_request_ping_role_ids() -> List[int]:
+    """Get the role IDs pinged when a story request thread is opened.
+    Malformed entries are dropped rather than crashing the listener."""
+    raw = config.get_nested(STORY_REQUESTS_KEY, "ping_role_ids", default=[]) or []
+    if not isinstance(raw, list):
+        return []
+    return [role_id for role_id in (_coerce_id(v) for v in raw) if role_id is not None]
+
+
+def set_story_request_ping_role_ids(role_ids: List[int]) -> bool:
+    """Replace the story request ping role list. Returns True if persisted."""
+    config.set_nested(STORY_REQUESTS_KEY, "ping_role_ids", value=list(role_ids))
+    return config.save_config()
 
 def add_department_member(department: str, user_id: int) -> bool:
     """Add a member to a department"""

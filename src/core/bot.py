@@ -82,6 +82,13 @@ class MarketingBot(commands.Bot):
             except Exception as e:
                 logger.error(f"Error loading config cog: {e}")
 
+            # Load story request cog (pings roles on new story-request threads)
+            try:
+                await self.load_extension('src.commands.story_request_cog')
+                logger.info("✅ Loaded story request cog")
+            except Exception as e:
+                logger.error(f"Error loading story request cog: {e}")
+
             # Load mock request cog (Anthropic-backed mock data generation)
             try:
                 from src.commands.mock_cog import MockCog

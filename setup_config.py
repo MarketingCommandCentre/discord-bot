@@ -365,6 +365,27 @@ async def run_setup(guild: discord.Guild) -> dict:
         "reminder_channel_id": reminder_channel_id,
     }
 
+    # Story requests forum: new threads there ping a configured set of roles.
+    story_forum_id = None
+    story_forum_name = (await ask(
+        " Story requests forum channel name (blank to skip)")).strip()
+    if story_forum_name:
+        forum = find_by_name(
+            [c for c in guild.channels if isinstance(c, discord.ForumChannel)], story_forum_name)
+        if forum:
+            story_forum_id = forum.id
+            print(f"   🔗 Linked story requests forum '{story_forum_name}' (id {forum.id})")
+        else:
+            print(f"   ⚠️  No forum channel named '{story_forum_name}' found; left unset.")
+
+    settings["story_requests"] = {
+        "enabled": True,
+        "forum_channel_id": story_forum_id,
+        "ping_role_ids": [],
+    }
+    if story_forum_id:
+        print("   📌 Add the roles to ping with /story-requests role-add once the bot is running.")
+
     # 6. Request panel message ---------------------------------------------------
     print("\nStep 6/6 — Request panel message")
     print(" Posts the message whose buttons members click to open a request.")
