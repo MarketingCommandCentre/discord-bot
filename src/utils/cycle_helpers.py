@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 # Define the reference cycle start date (first day of a production cycle)
 # This should be a Monday when a production cycle started
-CYCLE_START_DATE = datetime(2025, 11, 2)  # Adjust this to your actual cycle start
+CYCLE_START_DATE = datetime(2026, 9, 14)  # Collection runs the fortnight before, Aug 31 - Sep 13
 
 # Cycle length in days
 CYCLE_LENGTH_DAYS = 14
