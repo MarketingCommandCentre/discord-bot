@@ -81,8 +81,11 @@ class AdminRequestManageView(ui.View):
         
         # Dates Section
         posting_date = self.request.posting_date.strftime("%m/%d/%Y") if self.request.posting_date else "Not set"
-        created_at = self.request.created_at.strftime("%m/%d/%Y %H:%M") if self.request.created_at else "N/A"
-        updated_at = self.request.updated_at.strftime("%m/%d/%Y %H:%M") if self.request.updated_at else "N/A"
+        # created_at/updated_at are absolute instants: render them as Discord dynamic
+        # timestamps so every viewer sees them in their own timezone rather than the
+        # container's (UTC).
+        created_at = f"<t:{int(self.request.created_at.timestamp())}:f>" if self.request.created_at else "N/A"
+        updated_at = f"<t:{int(self.request.updated_at.timestamp())}:f>" if self.request.updated_at else "N/A"
         embed.add_field(
             name="📅 Dates",
             value=(

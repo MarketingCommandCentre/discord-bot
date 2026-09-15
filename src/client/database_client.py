@@ -1,6 +1,6 @@
 import os
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 import aiohttp
 from aiohttp import BasicAuth
@@ -81,12 +81,23 @@ class DatabaseClient:
     
     def _parse_datetime(self, datetime_str: str) -> datetime:
         """
-        Parse datetime string, handling high-precision fractional seconds.
-        
+        Parse an API datetime string into a timezone-aware datetime in local time.
+
         Python's fromisoformat only supports up to 6 digits for microseconds,
         but .NET can send 7 digits. This truncates to 6 digits.
         Also pads short fractional seconds to 6 digits.
+
+        The API returns UTC instants ("2026-08-27T19:45:16.572993Z"). A value with no
+        offset is assumed to be UTC as well, so a pre-Instant API build does not silently
+        shift timestamps. The result is converted to the bot's local zone so callers can
+        format it directly.
+
+        Date-only values (postingDate) are calendar dates, not moments: they stay naive at
+        local midnight so day-level comparisons elsewhere in the bot keep working.
         """
+        if len(datetime_str) == 10 and datetime_str.count("-") == 2:
+            return datetime.fromisoformat(datetime_str)
+
         # If there's a fractional seconds part, normalize it to 6 digits
         if '.' in datetime_str:
             # Split on the decimal point
@@ -99,14 +110,14 @@ class DatabaseClient:
                 # Extract only digits for fractional seconds
                 # Keep any timezone info after the fractional seconds
                 microseconds = ""
-                timezone = ""
+                offset = ""
                 for i, char in enumerate(fractional_part):
                     if char.isdigit():
                         if len(microseconds) < 6:
                             microseconds += char
                     else:
                         # Hit timezone or other character
-                        timezone = fractional_part[i:]
+                        offset = fractional_part[i:]
                         break
                 else:
                     # All characters were digits, check if we need to truncate
@@ -118,11 +129,18 @@ class DatabaseClient:
                 # Pad microseconds to 6 digits if shorter
                 if microseconds:
                     microseconds = microseconds.ljust(6, '0')
-                    datetime_str = f"{integer_part}.{microseconds}{timezone}"
+                    datetime_str = f"{integer_part}.{microseconds}{offset}"
                 else:
-                    datetime_str = f"{integer_part}{timezone}"
+                    datetime_str = f"{integer_part}{offset}"
         
-        return datetime.fromisoformat(datetime_str)
+        # fromisoformat only learned to accept a trailing "Z" in Python 3.11.
+        if datetime_str.endswith("Z"):
+            datetime_str = datetime_str[:-1] + "+00:00"
+
+        parsed = datetime.fromisoformat(datetime_str)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone()
     
     def _parse_request(self, data: dict) -> Request:
         """Convert API response dict to Request dataclass."""

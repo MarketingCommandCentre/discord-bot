@@ -57,8 +57,14 @@ class RequestManager:
             
             # 2. Update request with channel ID
             request.channel_id = channel.id
-            x = await self.get_requester_department(request.requester_id)
-            request.requester_department_id = x[1]['role_id']
+            department = await self.get_requester_department(request.requester_id)
+            if department:
+                request.requester_department_id = department[1].get('role_id')
+            else:
+                logger.warning(
+                    f"No configured department role matched requester {request.requester_id}; "
+                    "leaving requester_department_id unset"
+                )
             
             
             # 2.5: Place it in the appropriate category based on status
