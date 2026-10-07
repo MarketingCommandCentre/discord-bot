@@ -5,6 +5,7 @@ Snow Day Monitor Cog - Checks campus status every 5 minutes and alerts if any ca
 import discord
 from discord.ext import commands, tasks
 from datetime import datetime, time
+from zoneinfo import ZoneInfo
 import logging
 from typing import Optional
 
@@ -77,7 +78,7 @@ class SnowDayCog(commands.Cog):
         """Wait until the bot is ready before starting the loop."""
         await self.bot.wait_until_ready()
     
-    @tasks.loop(time=time(hour=6, minute=0, tzinfo=datetime.now().astimezone().tzinfo))  # Run at 6:00 AM EST
+    @tasks.loop(time=time(hour=6, minute=0, tzinfo=ZoneInfo("America/Toronto")))  # Run at 6:00 AM Toronto time
     async def daily_campus_update(self):
         """Send daily campus status update at 6:00 AM EST, then disable monitoring."""
         try:

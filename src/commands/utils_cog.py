@@ -6,6 +6,7 @@ import discord
 from discord.ext import commands, tasks
 from discord import app_commands
 from datetime import datetime, time, date, timedelta
+from zoneinfo import ZoneInfo
 import logging
 import asyncio
 from typing import Optional
@@ -32,7 +33,7 @@ class UtilsCog(commands.Cog):
         """Clean up when the cog is unloaded."""
         self.daily_reminder.cancel()
     
-    @tasks.loop(time=time(hour=6, minute=0, tzinfo=datetime.now().astimezone().tzinfo))  # Run at 6:00 AM EST
+    @tasks.loop(time=time(hour=6, minute=0, tzinfo=ZoneInfo("America/Toronto")))  # Run at 6:00 AM Toronto time
     async def daily_reminder(self):
         """Check for requests due today and send reminders."""
         try:

@@ -7,6 +7,9 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
+# Local dates/times (posting dates, "due today" checks) are Toronto time
+ENV TZ=America/Toronto
+
 # Install dependencies first for layer caching
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
