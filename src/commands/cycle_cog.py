@@ -16,7 +16,7 @@ class CycleCog(commands.Cog):
     
     def __init__(self, bot):
         self.bot = bot
-        self.workload_client = WorkloadClient(bot_auth=True)
+        self.workload_client = WorkloadClient()
     
     async def cog_unload(self):
         """Clean up resources when cog is unloaded."""

@@ -7,18 +7,17 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 import aiohttp
-from aiohttp import BasicAuth
 
 
 class WorkloadClient:
     """Async client for workload and cycle management endpoints."""
     
-    def __init__(self, bot_auth: bool = False):
+    def __init__(self):
         """
         Initialize the workload client.
-        
-        Args:
-            bot_auth: If True, authenticate as discord-bot. If False, use API key auth.
+
+        Authenticates with ``Authorization: Bearer <DATABASE_API_KEY>`` (the bot's JWT, which
+        must carry ROLE_BOT), the same way DatabaseClient does. /api/workload/** requires it.
         """
         self.base_url = os.getenv("DATABASE_API_URL")
         self.api_key = os.getenv("DATABASE_API_KEY")
@@ -26,7 +25,6 @@ class WorkloadClient:
         if not self.base_url:
             raise ValueError("DATABASE_API_URL environment variable is required")
         
-        self.bot_auth = bot_auth
         self._session: Optional[aiohttp.ClientSession] = None
         
         # Connection pool settings for better performance
@@ -37,11 +35,7 @@ class WorkloadClient:
         """Ensure aiohttp session exists with connection pooling."""
         if self._session is None or self._session.closed:
             headers = {}
-            auth = None
-            
-            if self.bot_auth:
-                auth = BasicAuth("discord-bot", self.api_key or "")
-            elif self.api_key:
+            if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
             
             # Create connector with connection pooling for better performance
@@ -54,7 +48,6 @@ class WorkloadClient:
             
             self._session = aiohttp.ClientSession(
                 headers=headers, 
-                auth=auth,
                 connector=connector,
                 timeout=aiohttp.ClientTimeout(total=30)
             )
