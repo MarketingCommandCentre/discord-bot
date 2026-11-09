@@ -1,6 +1,9 @@
-discord.py==2.3.2
-python-dotenv==1.0.0
-aiohttp==3.9.1
-bs4
-openpyxl==3.1.2
-anthropic
+discord.py==2.7.1
+python-dotenv==1.2.4
+aiohttp==3.14.5
+# Transitive (via aiohttp); explicit floor so an in-place upgrade of an
+# existing env (e.g. start.sh's venv) also moves past the vulnerable 6.7.1.
+multidict>=6.9.1
+beautifulsoup4==4.15.0
+openpyxl==3.1.5
+anthropic==1.4.0
