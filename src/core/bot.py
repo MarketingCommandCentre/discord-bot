@@ -40,6 +40,18 @@ class MarketingBot(commands.Bot):
         self.db = DatabaseClient(bot_auth=False)
         self.request_manager = RequestManager(self, self.db)
     
+    async def setup_hook(self):
+        """
+        Called once before the bot connects to Discord.
+        Register handlers that must work regardless of later startup steps.
+        """
+        from src.ui.views import EditRequestButton
+
+        # Handles the edit button on every request message via its custom_id
+        # (edit_request:<channel_id>), so no per-request registration or API
+        # call is needed at startup.
+        self.add_dynamic_items(EditRequestButton)
+        logger.info("✅ Registered request edit button handler")
     
     async def on_ready(self):
         """
@@ -116,33 +128,15 @@ class MarketingBot(commands.Bot):
             logger.error(f"Error loading cogs or syncing commands: {e}")
     
     async def _setup_persistent_views(self):
-        """Register persistent views for existing requests.
-        Optimized to batch-register views without individual Discord API calls."""
+        """Register persistent views.
+        Request edit buttons are handled by EditRequestButton (see setup_hook)."""
         try:
-            from src.ui.views import RequestEditView, RequestView
+            from src.ui.views import RequestView
 
             REQUEST_VIEW_MESSAGE_ID = int(os.getenv("REQUEST_VIEW_MESSAGE_ID"))
             request_view = RequestView(self.request_manager)
             self.add_view(request_view, message_id=REQUEST_VIEW_MESSAGE_ID)
             logger.info(f"✅ Registered RequestView for message {REQUEST_VIEW_MESSAGE_ID}")
-            
-            # Get all requests from database in a single call
-            all_requests = await self.db.get_all_requests()
-            
-            # Batch register views - this doesn't make API calls, just registers handlers
-            registered_count = 0
-            for request in all_requests:
-                if request.channel_id and request.requester_id:
-                    view = RequestEditView(
-                        requester_id=request.requester_id,
-                        request_type=request.type.value,
-                        channel_id=request.channel_id,
-                        request_manager=self.request_manager
-                    )
-                    self.add_view(view)
-                    registered_count += 1
-            
-            logger.info(f"Registered {registered_count} request edit view(s)")
             
         except Exception as e:
             logger.error(f"Error setting up persistent views: {e}")

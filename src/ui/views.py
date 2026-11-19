@@ -32,30 +32,34 @@ class RequestView(discord.ui.View):
         )
         await interaction.response.send_modal(modal)
 
-class RequestEditView(discord.ui.View):
-    """View with edit button for request owners."""
-    
-    def __init__(self, requester_id: int, request_type: str, channel_id: int, request_manager: RequestManager = None):
-        super().__init__(timeout=None)  # Persistent view
-        self.requester_id = requester_id
-        self.request_type = request_type
+class EditRequestButton(discord.ui.DynamicItem[discord.ui.Button], template=r"edit_request:(?P<channel_id>[0-9]+)"):
+    """Persistent "Edit Request" button for request channels.
+
+    The channel ID lives in the custom_id (``edit_request:<channel_id>``), so a
+    single registration via ``bot.add_dynamic_items(EditRequestButton)`` handles
+    the button on every request message, old or new, without needing to know
+    about each request at startup.
+    """
+
+    def __init__(self, channel_id: int):
+        super().__init__(
+            discord.ui.Button(
+                label="✏️ Edit Request",
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"edit_request:{channel_id}"
+            )
+        )
         self.channel_id = channel_id
-        self.request_manager = request_manager
 
-        # Dynamic unique custom_id per channel
-        custom_id = f"edit_request:{channel_id}"
-        button = discord.ui.Button(label="✏️ Edit Request", style=discord.ButtonStyle.secondary, custom_id=custom_id)
-        button.callback = self._on_edit_click  # type: ignore
-        self.add_item(button)
+    @classmethod
+    async def from_custom_id(cls, interaction: discord.Interaction, item: discord.ui.Button, match, /):
+        return cls(int(match["channel_id"]))
 
-    async def _on_edit_click(self, interaction: discord.Interaction):
+    async def callback(self, interaction: discord.Interaction):
         """Handle edit button click."""
 
         # Fetch the request from the database to prefill the modal
         try:
-            from src.client.database_client import DatabaseClient
-            from src.model.Models import Request
-            
             # Get the bot instance from the interaction
             bot = interaction.client
             db_client = getattr(bot, 'db', None)
@@ -77,8 +81,8 @@ class RequestEditView(discord.ui.View):
                 )
                 return
             
-            # Get request manager if available
-            request_manager = self.request_manager
+            # Get request manager from the bot, falling back to the request cog
+            request_manager = getattr(bot, 'request_manager', None)
             if not request_manager and hasattr(bot, 'get_cog'):
                 request_cog = bot.get_cog('RequestCog')
                 if request_cog:
@@ -107,6 +111,23 @@ class RequestEditView(discord.ui.View):
                 f"❌ An error occurred: {str(e)}",
                 ephemeral=True
             )
+
+class RequestEditView(discord.ui.View):
+    """View with edit button for request owners.
+
+    The button itself is an EditRequestButton dynamic item, so clicks are
+    handled by the bot-wide dynamic item registration rather than by this
+    view instance.
+    """
+    
+    def __init__(self, requester_id: int, request_type: str, channel_id: int, request_manager: RequestManager = None):
+        super().__init__(timeout=None)  # Persistent view
+        self.requester_id = requester_id
+        self.request_type = request_type
+        self.channel_id = channel_id
+        self.request_manager = request_manager
+
+        self.add_item(EditRequestButton(channel_id))
 
 class SubgroupVisibilityView(discord.ui.View):
     """Dynamic view for selecting department subgroup visibility"""
