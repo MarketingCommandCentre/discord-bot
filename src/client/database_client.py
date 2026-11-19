@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import List, Optional
 from datetime import datetime, timezone
@@ -6,6 +7,8 @@ import aiohttp
 from aiohttp import BasicAuth
 
 from src.model.Models import Request, RequestStatus, RequestType
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseClient:
@@ -207,7 +210,9 @@ class DatabaseClient:
                 data = await response.json()
                 return self._parse_request(data)
         except aiohttp.ClientError as e:
-            print(f"Error fetching request {channel_id}: {e}")
+            if isinstance(e, aiohttp.ClientResponseError) and e.status == 404:
+                return None  # Not a request channel
+            logger.error(f"Error fetching request {channel_id}: {e}")
             return None
     
     async def get_all_requests(self) -> List[Request]:
@@ -223,7 +228,7 @@ class DatabaseClient:
                 data = await response.json()
                 return [self._parse_request(req) for req in data]
         except aiohttp.ClientError as e:
-            print(f"Error fetching requests: {e}")
+            logger.error(f"Error fetching requests: {e}")
             return []
     
     async def get_requests_by_status(self, status: RequestStatus) -> List[Request]:
@@ -239,7 +244,7 @@ class DatabaseClient:
                 data = await response.json()
                 return [self._parse_request(req) for req in data]
         except aiohttp.ClientError as e:
-            print(f"Error fetching requests by status: {e}")
+            logger.error(f"Error fetching requests by status: {e}")
             return []
     
     async def get_requests_by_requester(self, requester_id: int) -> List[Request]:
@@ -255,7 +260,7 @@ class DatabaseClient:
                 data = await response.json()
                 return [self._parse_request(req) for req in data]
         except aiohttp.ClientError as e:
-            print(f"Error fetching requests by requester: {e}")
+            logger.error(f"Error fetching requests by requester: {e}")
             return []
     
     async def get_requests_by_assigned_to(self, assigned_to_id: int) -> List[Request]:
@@ -271,7 +276,7 @@ class DatabaseClient:
                 data = await response.json()
                 return [self._parse_request(req) for req in data]
         except aiohttp.ClientError as e:
-            print(f"Error fetching requests by assignee: {e}")
+            logger.error(f"Error fetching requests by assignee: {e}")
             return []
     
     async def create_request(self, request: Request, acting_user_id: Optional[int] = None) -> Optional[Request]:
@@ -288,7 +293,7 @@ class DatabaseClient:
                 data = await response.json()
                 return self._parse_request(data)
         except aiohttp.ClientError as e:
-            print(f"Error creating request: {e}")
+            logger.error(f"Error creating request: {e}")
             return None
     
     async def update_request(self, channel_id: int, request: Request, acting_user_id: Optional[int] = None) -> Optional[Request]:
@@ -311,7 +316,7 @@ class DatabaseClient:
                     data["requestType"] = request.type.value.upper()
                 return self._parse_request(data)
         except aiohttp.ClientError as e:
-            print(f"Error updating request: {e}")
+            logger.error(f"Error updating request: {e}")
             return None
     
     async def delete_request(self, channel_id: int, acting_user_id: Optional[int] = None) -> bool:
@@ -326,7 +331,7 @@ class DatabaseClient:
                 response.raise_for_status()
                 return True
         except aiohttp.ClientError as e:
-            print(f"Error deleting request {channel_id}: {e}")
+            logger.error(f"Error deleting request {channel_id}: {e}")
             return False
     
     async def assign_request(self, channel_id: int, assigned_to_id: int, acting_user_id: Optional[int] = None) -> Optional[Request]:
@@ -345,7 +350,7 @@ class DatabaseClient:
                 data = await response.json()
                 return self._parse_request(data)
         except aiohttp.ClientError as e:
-            print(f"Error assigning request {channel_id}: {e}")
+            logger.error(f"Error assigning request {channel_id}: {e}")
             return None
     
     async def set_request_status(self, channel_id: int, status: RequestStatus, acting_user_id: Optional[int] = None) -> Optional[Request]:
@@ -364,7 +369,7 @@ class DatabaseClient:
                 data = await response.json()
                 return self._parse_request(data)
         except aiohttp.ClientError as e:
-            print(f"Error setting request status {channel_id}: {e}")
+            logger.error(f"Error setting request status {channel_id}: {e}")
             return None
     
     async def advance_request_to_next_status(self, channel_id: int, acting_user_id: Optional[int] = None) -> Optional[Request]:
@@ -383,7 +388,7 @@ class DatabaseClient:
                 data = await response.json()
                 return self._parse_request(data)
         except aiohttp.ClientError as e:
-            print(f"Error advancing request {channel_id}: {e}")
+            logger.error(f"Error advancing request {channel_id}: {e}")
             return None
     
     async def update_requester_department(self, channel_id: int, department_id: int, acting_user_id: Optional[int] = None) -> Optional[Request]:
@@ -402,7 +407,7 @@ class DatabaseClient:
                 data = await response.json()
                 return self._parse_request(data)
         except aiohttp.ClientError as e:
-            print(f"Error updating requester department {channel_id}: {e}")
+            logger.error(f"Error updating requester department {channel_id}: {e}")
             return None
     
     async def log_audit_event(
@@ -438,7 +443,7 @@ class DatabaseClient:
                 response.raise_for_status()
                 return True
         except aiohttp.ClientError as e:
-            print(f"Error logging audit event {event_type} for {entity_id}: {e}")
+            logger.error(f"Error logging audit event {event_type} for {entity_id}: {e}")
             return False
 
     async def change_requester(self, channel_id: int, requester_id: int, acting_user_id: Optional[int] = None) -> Optional[Request]:
@@ -457,5 +462,5 @@ class DatabaseClient:
                 data = await response.json()
                 return self._parse_request(data)
         except aiohttp.ClientError as e:
-            print(f"Error changing requester for request {channel_id}: {e}")
+            logger.error(f"Error changing requester for request {channel_id}: {e}")
             return None
